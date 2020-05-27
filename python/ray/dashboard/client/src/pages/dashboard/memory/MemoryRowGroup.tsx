@@ -9,7 +9,7 @@ import {
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
-import React from "react";
+import React, { useState } from "react";
 import {
   MemoryTableResponse,
   MemoryTableEntry,
@@ -46,103 +46,86 @@ type Props = {
   initialExpanded: boolean;
 };
 
-type State = {
-  expanded: boolean;
-};
+const MemoryRowGroup = (props: Props & WithStyles<typeof styles>) => {
+  const { classes, groupKey, memoryTableGroups } = props;
+  const [expanded, setExpanded] = useState(props.initialExpanded);
+  const toggleExpanded = () => setExpanded(!expanded);
 
-class MemoryRowGroup extends React.Component<
-  Props & WithStyles<typeof styles>,
-  State
-> {
-  state: State = {
-    expanded: this.props.initialExpanded,
-  };
+  const features = [
+    "node_ip_address",
+    "pid",
+    "type",
+    "object_id",
+    "object_size",
+    "reference_type",
+    "call_site",
+  ];
 
-  toggleExpand = () => {
-    this.setState((state) => ({
-      expanded: !state.expanded,
-    }));
-  };
+  const memoryTableGroup = memoryTableGroups[groupKey];
+  const entries: Array<MemoryTableEntry> = memoryTableGroup["entries"];
+  const summary: MemoryTableSummary = memoryTableGroup["summary"];
 
-  render() {
-    const { classes, groupKey, memoryTableGroups } = this.props;
-    const { expanded } = this.state;
-
-    const features = [
-      "node_ip_address",
-      "pid",
-      "type",
-      "object_id",
-      "object_size",
-      "reference_type",
-      "call_site",
-    ];
-
-    const memoryTableGroup = memoryTableGroups[groupKey];
-    const entries: Array<MemoryTableEntry> = memoryTableGroup["entries"];
-    const summary: MemoryTableSummary = memoryTableGroup["summary"];
-
-    return (
-      <React.Fragment>
-        <TableRow hover>
-          <TableCell
-            className={classNames(classes.cell, classes.expandCollapseCell)}
-            onClick={this.toggleExpand}
-          >
-            {!expanded ? (
-              <AddIcon className={classes.expandCollapseIcon} />
-            ) : (
-              <RemoveIcon className={classes.expandCollapseIcon} />
-            )}
+  return (
+    <React.Fragment>
+      <TableRow hover>
+        <TableCell
+          className={classNames(classes.cell, classes.expandCollapseCell)}
+          onClick={toggleExpanded}
+        >
+          {!expanded ? (
+            <AddIcon className={classes.expandCollapseIcon} />
+          ) : (
+            <RemoveIcon className={classes.expandCollapseIcon} />
+          )}
+        </TableCell>
+        {features.map((feature, index) => (
+          <TableCell className={classes.cell} key={index}>
+            {// TODO(sang): For now, it is always grouped by node_ip_address.
+            feature === "node_ip_address" ? groupKey : ""}
           </TableCell>
-          {features.map((feature, index) => (
-            <TableCell className={classes.cell} key={index}>
-              {// TODO(sang): For now, it is always grouped by node_ip_address.
-              feature === "node_ip_address" ? groupKey : ""}
-            </TableCell>
-          ))}
-        </TableRow>
-        {expanded && (
-          <React.Fragment>
-            <MemorySummary
-              initialExpanded={false}
-              memoryTableSummary={summary}
-            />
-            {entries.map((memory_table_entry, index) => {
-              const object_size =
-                memory_table_entry.object_size === -1
-                  ? "?"
-                  : memory_table_entry.object_size + " B";
-              return (
-                <TableRow hover key={index}>
-                  <TableCell className={classes.cell} />
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.node_ip_address}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.pid}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.type}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.object_id}
-                  </TableCell>
-                  <TableCell className={classes.cell}>{object_size}</TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.reference_type}
-                  </TableCell>
-                  <TableCell className={classes.cell}>
-                    {memory_table_entry.call_site}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </React.Fragment>
-        )}
-      </React.Fragment>
-    );
-  }
+        ))}
+      </TableRow>
+      {expanded && (
+        <React.Fragment>
+          <MemorySummary
+            initialExpanded={false}
+            memoryTableSummary={summary}
+          />
+          {entries.map((memory_table_entry, index) => {
+            const object_size =
+              memory_table_entry.object_size === -1
+                ? "?"
+                : memory_table_entry.object_size + " B";
+            return (
+              <TableRow hover key={index}>
+                <TableCell className={classes.cell} />
+                <TableCell className={classes.cell}>
+                  {memory_table_entry.node_ip_address}
+                </TableCell>
+                <TableCell className={classes.cell}>
+                  {memory_table_entry.pid}
+                </TableCell>
+                <TableCell className={classes.cell}>
+                  {memory_table_entry.type}
+                </TableCell>
+                <TableCell className={classes.cell}>
+                  {memory_table_entry.object_id}
+                </TableCell>
+                <TableCell className={classes.cell}>{object_size}</TableCell>
+                <TableCell className={classes.cell}>
+                  {memory_table_entry.reference_type}
+                </TableCell>
+                <TableCell className={classes.cell}>
+                  {memory_table_entry.call_site}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </React.Fragment>
+      )}
+    </React.Fragment>
+  );
 }
+
 
 export default withStyles(styles)(MemoryRowGroup);
