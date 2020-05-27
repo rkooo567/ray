@@ -87,10 +87,7 @@ const MemoryRowGroup = (props: Props & WithStyles<typeof styles>) => {
       </TableRow>
       {expanded && (
         <React.Fragment>
-          <MemorySummary
-            initialExpanded={false}
-            memoryTableSummary={summary}
-          />
+          <MemorySummary initialExpanded={false} memoryTableSummary={summary} />
           {entries.map((memory_table_entry, index) => {
             const object_size =
               memory_table_entry.object_size === -1
@@ -125,7 +122,6 @@ const MemoryRowGroup = (props: Props & WithStyles<typeof styles>) => {
       )}
     </React.Fragment>
   );
-}
-
+};
 
 export default withStyles(styles)(MemoryRowGroup);
