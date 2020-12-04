@@ -370,6 +370,7 @@ cdef execute_task(
 
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
+    worker_id = core_worker.get_worker_id()
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         next_title = "ray::IDLE"
@@ -378,7 +379,8 @@ cdef execute_task(
             f"X-RAY-TRACE message:'NORMAL_TASK_EXECUTED' title:{next_title}"
             f" task_name:{task_name}"
             f" job_id:{job_id.hex().encode('ascii')}"
-            f" task_id:{task_id.hex().encode('ascii')}")
+            f" task_id:{task_id.hex().encode('ascii')}"
+            f" worker_id:{worker_id.hex().encode('ascii')}")
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
@@ -390,7 +392,8 @@ cdef execute_task(
                 f" task_name:{task_name}"
                 f" job_id:{job_id.hex().encode('ascii')}"
                 f" task_id:{task_id.hex().encode('ascii')}"
-                f" actor_id:{core_worker.get_actor_id().hex().encode('ascii')}") # noqa 
+                f" actor_id:{core_worker.get_actor_id().hex().encode('ascii')}"
+                f" worker_id:{worker_id.hex().encode('ascii')}") # noqa 
         else:
             logger.info(
                 f"X-RAY-TRACE message:'ACTOR_TASK_EXECUTED'"
@@ -398,7 +401,8 @@ cdef execute_task(
                 f" task_name:{task_name}"
                 f" job_id:{job_id.hex().encode('ascii')}"
                 f" task_id:{task_id.hex().encode('ascii')}"
-                f" actor_id:{core_worker.get_actor_id().hex().encode('ascii')}") # noqa 
+                f" actor_id:{core_worker.get_actor_id().hex().encode('ascii')}"
+                f" worker_id:{worker_id.hex().encode('ascii')}") # noqa 
         pid = os.getpid()
         worker_name = f"ray_{class_name}_{pid}"
         if c_resources.find(b"object_store_memory") != c_resources.end():
@@ -842,6 +846,10 @@ cdef class CoreWorker:
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
+
+    def get_worker_id(self):
+        return WorkerID(
+            CCoreWorkerProcess.GetCoreWorker().GetWorkerID().Binary())
 
     def get_placement_group_id(self):
         return PlacementGroupID(

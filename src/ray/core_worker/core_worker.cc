@@ -1785,7 +1785,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
       return_ids, return_objects);
-  RAY_LOG(INFO) << "X-RAY-TRACE message:'TASK_DONE.' task_id:" << task_spec.TaskId();
+  RAY_LOG(INFO) << "X-RAY-TRACE message:'TASK_DONE.' task_id:" << task_spec.TaskId() << " worker_id:" << GetWorkerID();
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
                              : worker_context_.GetCurrentTask()->CallerAddress());
