@@ -1324,7 +1324,8 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   TaskSpecification task_spec = builder.Build();
   auto dep_ids = task_spec.GetDependencyIds();
   std::ostringstream stream;
-  stream << "X-RAY-TRACE message:'NORMAL_TASK_DEPENDENCIES.' task_id:" << task_spec.TaskId() << " name:" << task_name;
+  stream << "X-RAY-TRACE message:'NORMAL_TASK_DEPENDENCIES.' task_id:"
+         << task_spec.TaskId() << " name:" << task_name;
   stream << " dep:";
   for (const auto &dep_id : dep_ids) {
     stream << dep_id << ",";
@@ -1413,7 +1414,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecification task_spec = builder.Build();
   auto dep_ids = task_spec.GetDependencyIds();
   std::ostringstream stream;
-  stream << "X-RAY-TRACE message:'ACTOR_CREATION_TASK_DEPENDENCIES.' task_id:" << task_spec.TaskId() << " name:" << task_name;
+  stream << "X-RAY-TRACE message:'ACTOR_CREATION_TASK_DEPENDENCIES.' task_id:"
+         << task_spec.TaskId() << " name:" << task_name;
   stream << " dep:";
   for (const auto &dep_id : dep_ids) {
     stream << dep_id << ",";
@@ -1526,7 +1528,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   TaskSpecification task_spec = builder.Build();
   auto dep_ids = task_spec.GetDependencyIds();
   std::ostringstream stream;
-  stream << "X-RAY-TRACE message:'ACTOR_TASK_DEPENDENCIES.' task_id:" << task_spec.TaskId() << " name:" << task_name;
+  stream << "X-RAY-TRACE message:'ACTOR_TASK_DEPENDENCIES.' task_id:"
+         << task_spec.TaskId() << " name:" << task_name;
   stream << " dep:";
   for (const auto &dep_id : dep_ids) {
     stream << dep_id << ",";
@@ -1826,7 +1829,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
       return_ids, return_objects);
-  RAY_LOG(INFO) << "X-RAY-TRACE message:'TASK_DONE.' task_id:" << task_spec.TaskId() << " worker_id:" << GetWorkerID();
+  RAY_LOG(INFO) << "X-RAY-TRACE message:'TASK_DONE.' task_id:" << task_spec.TaskId()
+                << " worker_id:" << GetWorkerID();
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
                              : worker_context_.GetCurrentTask()->CallerAddress());
