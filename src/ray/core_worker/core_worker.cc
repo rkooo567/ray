@@ -1322,6 +1322,20 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                       placement_options, placement_group_capture_child_tasks,
                       override_environment_variables);
   TaskSpecification task_spec = builder.Build();
+  auto dep_ids = task_spec.GetDependencyIds();
+  std::ostringstream stream;
+  stream << "X-RAY-TRACE message:'NORMAL_TASK_DEPENDENCIES.' task_id:" << task_spec.TaskId() << " name:" << task_name;
+  stream << " dep:";
+  for (const auto &dep_id : dep_ids) {
+    stream << dep_id << ",";
+  }
+  stream << " return:";
+  for (int j = 0; j < task_spec.NumReturns(); j++) {
+    const auto &return_id = task_spec.ReturnId(j);
+    stream << return_id << ",";
+  }
+  RAY_LOG(INFO) << stream.str();
+
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
   } else {
@@ -1397,6 +1411,19 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
+  auto dep_ids = task_spec.GetDependencyIds();
+  std::ostringstream stream;
+  stream << "X-RAY-TRACE message:'ACTOR_CREATION_TASK_DEPENDENCIES.' task_id:" << task_spec.TaskId() << " name:" << task_name;
+  stream << " dep:";
+  for (const auto &dep_id : dep_ids) {
+    stream << dep_id << ",";
+  }
+  stream << " return:";
+  for (int j = 0; j < task_spec.NumReturns(); j++) {
+    const auto &return_id = task_spec.ReturnId(j);
+    stream << return_id << ",";
+  }
+  RAY_LOG(INFO) << stream.str();
   Status status;
   if (options_.is_local_mode) {
     if (task_spec.IsDetachedActor()) {
@@ -1497,6 +1524,20 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
 
   // Submit task.
   TaskSpecification task_spec = builder.Build();
+  auto dep_ids = task_spec.GetDependencyIds();
+  std::ostringstream stream;
+  stream << "X-RAY-TRACE message:'ACTOR_TASK_DEPENDENCIES.' task_id:" << task_spec.TaskId() << " name:" << task_name;
+  stream << " dep:";
+  for (const auto &dep_id : dep_ids) {
+    stream << dep_id << ",";
+  }
+  stream << " return:";
+  // Last return value is always dummy object id, which is our legacy code.
+  for (int j = 0; j < task_spec.NumReturns() - 1; j++) {
+    const auto &return_id = task_spec.ReturnId(j);
+    stream << return_id << ",";
+  }
+  RAY_LOG(INFO) << stream.str();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec, actor_id);
   } else {

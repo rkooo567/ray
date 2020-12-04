@@ -42,7 +42,7 @@ def f(size, *xs):
 
 
 # Require 1 GPU to force the actors to be on remote machines.
-@ray.remote(num_cpus=1, num_gpus=1)
+@ray.remote(num_cpus=1)
 class Actor(object):
     def method(self, size, *xs):
         return np.ones(size, dtype=np.uint8)
@@ -114,6 +114,8 @@ for N in [1000, 1100]:
     ray.get(x_ids)
 stage_3_time = time.time() - start_time
 logger.info("Finished stage 3 in %s seconds.", stage_3_time)
+
+del actors
 
 # This tests https://github.com/ray-project/ray/issues/10150. The only way to
 # integration test this is via performance. The goal is to fill up the cluster
