@@ -1,22 +1,24 @@
+import glob
 import ray
 import dask
 import dask.dataframe as dd
 import json
 import pandas as pd
 import numpy as np
-from ray.util.dask import ray_dask_get
+from ray.util.dask import ray_dask_get_sync
 import os.path
 import csv
 import fastparquet
 
 from dask.distributed import Client
 from dask.distributed import wait
+import cProfile, pstats, io
+from pstats import SortKey
 
 import time
 
-DATA_DIR = "~/dask-on-ray-data"
-
-#DATA_DIR = "/home/ubuntu/dask-on-ray"
+# DATA_DIR = "~/dask-on-ray-data"
+DATA_DIR = "/obj-data"
 
 
 def load_dataset(nbytes, npartitions, sort):
@@ -61,7 +63,7 @@ def load_dataset(nbytes, npartitions, sort):
 
 def trial(nbytes, n_partitions, sort, generate_only):
     df = load_dataset(nbytes, n_partitions, sort)
-
+    pr = cProfile.Profile()
     if generate_only:
         return
 
@@ -72,9 +74,11 @@ def trial(nbytes, n_partitions, sort, generate_only):
         trial_start = time.time()
 
         if sort:
+            pr.enable()
             a = df.set_index('a', shuffle='tasks', max_branch=10**9)
-            a.visualize(filename=f'a-{i}.svg')
+            # a.visualize(filename=f'a-{i}.svg')
             a.head(10, npartitions=-1)
+            pr.disable()
         else:
             df.groupby('b').a.mean().compute()
 
@@ -82,6 +86,9 @@ def trial(nbytes, n_partitions, sort, generate_only):
         duration = trial_end - trial_start
         times.append(duration)
         print("Trial {} done after {}".format(i, duration))
+        sortby = SortKey.CUMULATIVE
+        ps = pstats.Stats(pr).sort_stats(sortby)
+        ps.dump_stats("ray_profile_data")
 
         if time.time() - start > 60 and i > 0:
             break
@@ -104,7 +111,14 @@ if __name__ == '__main__':
     parser.add_argument("--ray", action="store_true")
     parser.add_argument("--dask-tasks", action="store_true")
     parser.add_argument("--generate-only", action="store_true")
+    parser.add_argument("--clear-old-data", action="store_true")
     args = parser.parse_args()
+
+    if args.clear_old_data:
+        print(f"Clearing old data from {DATA_DIR}.")
+        files = glob.glob(os.path.join(DATA_DIR, "*.parquet.gzip"))
+        for f in files:
+            os.remove(f)
 
     if args.ray:
         args.dask_tasks = True
@@ -117,23 +131,23 @@ if __name__ == '__main__':
 
     if args.dask:
         client = Client('127.0.0.1:8786')
-        ray.init()
+        ray.init(address='auto')
     if args.ray:
-        # ray.init(address="auto")
-        ray.init(
-            num_cpus=16,
-            _system_config={
-                "max_io_workers": 1,
-                "object_spilling_config": json.dumps(
-                    {
-                        "type": "filesystem",
-                        "params": {
-                            "directory_path": "/tmp/spill"
-                        }
-                    },
-                    separators=(",", ":"))
-            })
-        dask.config.set(scheduler=ray_dask_get)
+        ray.init(address="auto")
+        # ray.init(
+        #     num_cpus=16,
+        #     _system_config={
+        #         "max_io_workers": 1,
+        #         "object_spilling_config": json.dumps(
+        #             {
+        #                 "type": "filesystem",
+        #                 "params": {
+        #                     "directory_path": "/tmp/spill"
+        #                 }
+        #             },
+        #             separators=(",", ":"))
+        #     })
+        dask.config.set(scheduler=ray_dask_get_sync)
 
     system = "dask" if args.dask else "ray"
 
