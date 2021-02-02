@@ -1,0 +1,3 @@
+system,operation,num_nodes,nbytes,npartitions,duration
+ray,sort,1,1000000000,50,38.00257587432861
+ray,sort,1,1000000000,100,65.93781399726868
