@@ -21,7 +21,7 @@ import time
 DATA_DIR = "/obj-data"
 
 
-def load_dataset(nbytes, npartitions, sort)::/
+def load_dataset(nbytes, npartitions, sort):
     num_bytes_per_partition = nbytes // npartitions
     filenames = []
 
