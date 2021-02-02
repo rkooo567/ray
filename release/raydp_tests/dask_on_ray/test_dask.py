@@ -74,11 +74,11 @@ def trial(nbytes, n_partitions, sort, generate_only):
         trial_start = time.time()
 
         if sort:
-            pr.enable()
+            # pr.enable()
             a = df.set_index('a', shuffle='tasks', max_branch=10**9)
             # a.visualize(filename=f'a-{i}.svg')
             a.head(10, npartitions=-1)
-            pr.disable()
+            # pr.disable()
         else:
             df.groupby('b').a.mean().compute()
 
@@ -86,9 +86,9 @@ def trial(nbytes, n_partitions, sort, generate_only):
         duration = trial_end - trial_start
         times.append(duration)
         print("Trial {} done after {}".format(i, duration))
-        sortby = SortKey.CUMULATIVE
-        ps = pstats.Stats(pr).sort_stats(sortby)
-        ps.dump_stats("ray_profile_data")
+        # sortby = SortKey.CUMULATIVE
+        # ps = pstats.Stats(pr).sort_stats(sortby)
+        # ps.dump_stats("ray_profile_data")
 
         if time.time() - start > 60 and i > 0:
             break
