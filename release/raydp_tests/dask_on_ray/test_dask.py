@@ -9,16 +9,18 @@ from ray.util.dask import ray_dask_get_sync
 import os.path
 import csv
 import fastparquet
+import sys
 
 from dask.distributed import Client
 from dask.distributed import wait
 import cProfile, pstats, io
 from pstats import SortKey
+from tqdm import tqdm
 
 import time
 
-# DATA_DIR = "~/dask-on-ray-data"
-DATA_DIR = "/obj-data"
+DATA_DIR = "~/dask-on-ray-data"
+# DATA_DIR = "/obj-data"
 
 
 def load_dataset(nbytes, npartitions, sort):
@@ -30,11 +32,11 @@ def load_dataset(nbytes, npartitions, sort):
         filename = "df-{}-{}-{}.parquet.gzip".format(
             "sort" if sort else "groupby", num_bytes_per_partition, i)
         filename = os.path.join(DATA_DIR, filename)
-        print("Partition file", filename)
+        # print("Partition file", filename)
         if not os.path.exists(filename):
             if sort:
                 nrows = num_bytes_per_partition // 8
-                print("Allocating dataset with {} rows".format(nrows))
+                # print("Allocating dataset with {} rows".format(nrows))
                 dataset = pd.DataFrame(
                     np.random.randint(
                         0,
@@ -44,34 +46,87 @@ def load_dataset(nbytes, npartitions, sort):
                     columns=['a'])
             else:
                 nrows = num_bytes_per_partition // (8 * 2)
-                print("Allocating dataset with {} rows".format(nrows))
+                # print("Allocating dataset with {} rows".format(nrows))
                 dataset = pd.DataFrame(
                     np.random.randint(0, 100, size=(nrows, 2), dtype=np.int64),
                     columns=['a', 'b'])
-            print("Done allocating")
+            # print("Done allocating")
             dataset.to_parquet(filename, compression='gzip')
-            print("Done writing to disk")
+            # print("Done writing to disk")
         return filename
 
     for i in range(npartitions):
         filenames.append(foo.remote(i))
-    filenames = ray.get(filenames)
+    results = []
+    pbar = tqdm(total=len(filenames))
+    ready, unready = ray.wait(filenames)
+    while unready:
+        results.extend(ready)
+        ready, unready = ray.wait(unready)
+        pbar.update(len(ready))
+    del filenames
+    filenames = ray.get(results)
 
     df = dd.read_parquet(filenames)
-    import time
-    print("parquet read")
-    time.sleep(20)
-    print("sleep done.")
     return df
 
 
 def trial(nbytes, n_partitions, sort, generate_only):
+    from ray.util.dask import RayDaskCallback
+
+    @ray.remote
+    class CounterActor:
+        def __init__(self):
+            self.cnt = 0
+            self.object_num = 0
+        def increment(self, n, object_num):
+            self.cnt += n
+            self.object_num += object_num
+        def get(self):
+            return self.cnt
+        def get_object_num(self):
+            return self.object_num
+
+    c = CounterActor.remote()
+
+    class CountRefs(RayDaskCallback):
+        def __init__(self, cnt_actor):
+            self.cnt_actor = cnt_actor
+
+        def _ray_pretask(self, key, consumed_objs):
+            total = 0
+            object_num = 0
+            for obj in consumed_objs:
+                if sys.getsizeof(obj) > 1024 * 100:
+                    print(type(obj))
+                    object_num += 1
+                total += sys.getsizeof(obj)
+            self.cnt_actor.increment.remote(total, object_num)
+
+        def _ray_postsubmit_all(self, object_refs, dsk):
+            pass
+            # print(f"dask DAG: {dsk.dicts}")
+
+        def _ray_finish(self, result):
+            if isinstance(result, (list, tuple)):
+                result = [result]
+            total = 0
+            object_num = 0
+            for obj in result:
+                if sys.getsizeof(obj) > 1024 * 100:
+                    object_num += 1
+                total += sys.getsizeof(obj)
+            self.cnt_actor.increment.remote(total, object_num)
+
+
+    count = CountRefs(c)
     df = load_dataset(nbytes, n_partitions, sort)
-    pr = cProfile.Profile()
+    # pr = cProfile.Profile()
     if generate_only:
         return
 
     times = []
+    # df.visualize(filename=f'a-{i}.svg')
     start = time.time()
     for i in range(1):
         print("Trial {} start".format(i))
@@ -79,9 +134,11 @@ def trial(nbytes, n_partitions, sort, generate_only):
 
         if sort:
             # pr.enable()
-            a = df.set_index('a', shuffle='tasks', max_branch=10**9)
-            # a.visualize(filename=f'a-{i}.svg')
-            a.head(10, npartitions=-1)
+            with count:
+                a = df.set_index('a', shuffle='tasks', max_branch=10 ** 9)
+                a = a.head(10, npartitions=-1, compute=False)
+                # a.visualize(filename=f'a-{i}.svg')
+                a.compute()
             # pr.disable()
         else:
             df.groupby('b').a.mean().compute()
@@ -90,6 +147,8 @@ def trial(nbytes, n_partitions, sort, generate_only):
         duration = trial_end - trial_start
         times.append(duration)
         print("Trial {} done after {}".format(i, duration))
+        print(f"num obj ref bytes used: {ray.get(c.get.remote()) / 1024 / 1024}")
+        print(f"num objs: {ray.get(c.get_object_num.remote())}")
         # sortby = SortKey.CUMULATIVE
         # ps = pstats.Stats(pr).sort_stats(sortby)
         # ps.dump_stats("ray_profile_data")
@@ -156,7 +215,7 @@ if __name__ == '__main__':
     system = "dask" if args.dask else "ray"
 
     # print(system, trial(1000, 10, args.sort, args.generate_only))
-    print("WARMUP DONE")
+    # print("WARMUP DONE")
 
     npartitions = args.npartitions
     if args.nbytes // npartitions > args.max_partition_size:

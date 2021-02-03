@@ -1,0 +1,6 @@
+Clearing old data from ~/dask-on-ray-data.
+Using task-based Dask shuffle
+Trial 0 start
+Trial 0 done after 26.13987922668457
+num obj ref bytes used: 474.84737396240234
+ray mean over 1 trials: 26.13987922668457 +- 0.0
