@@ -5,6 +5,7 @@
 # cython: c_string_encoding = default
 
 from cpython.exc cimport PyErr_CheckSignals
+import signal
 import json
 import asyncio
 import gc
@@ -483,15 +484,22 @@ cdef execute_task(
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
             if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
+                import debugpy
+                debug_port = ray.worker._global_node._get_unused_port()[0]
+                debugpy.listen(("0.0.0.0", debug_port))
                 task_meta = {
                     "name": title,
                     "worker_id": binary_to_hex(worker.worker_id),
                     "task_id": task_id.hex(),
-                    "state": "Executing"
+                    "state": "Executing",
+                    "port": debug_port
                 }
                 ray.experimental.internal_kv._internal_kv_put(
                     f"RAY_VSCODE_TASK_{task_id.hex()}",
                     json.dumps(task_meta))
+                # SANG-TODO Enable it.
+                if os.getenv("VSCODE_WAIT_FOR_CLIENT"):
+                    debugpy.wait_for_client()
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -578,6 +586,21 @@ cdef execute_task(
         ray.experimental.internal_kv._internal_kv_put(
             f"RAY_VSCODE_TASK_{task_id.hex()}",
             json.dumps(task_meta))
+        from debugpy.server import api   
+        assert api._adapter_process
+        # print(api._adapter_process.pid)
+        # killed = False
+        # cnt = 0
+        # while cnt < 100 and not killed:
+        #     print("cc")
+        #     try:
+        #         os.kill(api._adapter_process.pid, signal.SIGTERM)
+        #         print("killed")
+        #         killed = True
+        #     except ProcessLookupError:
+        #         time.sleep(0.1)
+        #     cnt += 1
+        
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.

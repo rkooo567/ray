@@ -190,20 +190,6 @@ if __name__ == "__main__":
     configure_log_file(out_file, err_file)
 
     if mode == ray.WORKER_MODE:
-        vscode_debug = os.getenv("RAY_VSCODE_DEBUG") or False
-        if vscode_debug:
-            import debugpy
-            port = node._get_unused_port()[0]
-            debugpy.listen(port)
-            worker_id = binary_to_hex(ray.worker.global_worker.worker_id)
-            _internal_kv_put(
-                f"RAY_VSCODE_WORKER_{worker_id}",
-                json.dumps({
-                    "port": port,
-                    "worker_id": worker_id
-                }))
-            # SANG-TODO Enable it.
-            # debugpy.wait_for_client()
         ray.worker.global_worker.main_loop()
     elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE):
         # It is handled by another thread in the C++ core worker.
