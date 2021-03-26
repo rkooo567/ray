@@ -586,7 +586,7 @@ cdef execute_task(
         ray.experimental.internal_kv._internal_kv_put(
             f"RAY_VSCODE_TASK_{task_id.hex()}",
             json.dumps(task_meta))
-        from debugpy.server import api   
+        from debugpy.server import api
         assert api._adapter_process
         # print(api._adapter_process.pid)
         # killed = False
@@ -600,7 +600,7 @@ cdef execute_task(
         #     except ProcessLookupError:
         #         time.sleep(0.1)
         #     cnt += 1
-        
+
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.

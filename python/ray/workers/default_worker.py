@@ -13,8 +13,6 @@ import ray._private.utils
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import (get_worker_log_file_name,
                                       configure_log_file)
-from ray.experimental.internal_kv import (_internal_kv_put)
-from ray._private.utils import binary_to_hex
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
