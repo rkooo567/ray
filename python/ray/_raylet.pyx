@@ -5,7 +5,7 @@
 # cython: c_string_encoding = default
 
 from cpython.exc cimport PyErr_CheckSignals
-
+import json
 import asyncio
 import gc
 import inspect
@@ -18,6 +18,7 @@ import pickle
 import sys
 import _thread
 import setproctitle
+from ray._private.utils import binary_to_hex
 
 from libc.stdint cimport (
     int32_t,
@@ -481,6 +482,16 @@ cdef execute_task(
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
+            if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
+                task_meta = {
+                    "name": title,
+                    "worker_id": binary_to_hex(worker.worker_id),
+                    "task_id": task_id.hex(),
+                    "state": "Executing"
+                }
+                ray.experimental.internal_kv._internal_kv_put(
+                    f"RAY_VSCODE_TASK_{task_id.hex()}",
+                    json.dumps(task_meta))
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -557,7 +568,16 @@ cdef execute_task(
                 job_id=worker.current_job_id)
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 raise RayActorError.from_task_error(failure_object)
-
+    if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
+        task_meta = {
+            "name": title,
+            "worker_id": binary_to_hex(worker.worker_id),
+            "task_id": task_id.hex(),
+            "state": "FINISHED"
+        }
+        ray.experimental.internal_kv._internal_kv_put(
+            f"RAY_VSCODE_TASK_{task_id.hex()}",
+            json.dumps(task_meta))
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
