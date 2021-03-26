@@ -13,8 +13,7 @@ import ray._private.utils
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import (get_worker_log_file_name,
                                       configure_log_file)
-from ray.experimental.internal_kv import (
-    _internal_kv_put)
+from ray.experimental.internal_kv import (_internal_kv_put)
 from ray._private.utils import binary_to_hex
 
 parser = argparse.ArgumentParser(
@@ -199,8 +198,11 @@ if __name__ == "__main__":
             worker_id = binary_to_hex(ray.worker.global_worker.worker_id)
             _internal_kv_put(
                 f"RAY_VSCODE_WORKER_{worker_id}",
-                json.dumps({"port": port, "worker_id": worker_id}))
-            # SANG-TODO Enable it. 
+                json.dumps({
+                    "port": port,
+                    "worker_id": worker_id
+                }))
+            # SANG-TODO Enable it.
             # debugpy.wait_for_client()
         ray.worker.global_worker.main_loop()
     elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE):
