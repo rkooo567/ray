@@ -75,10 +75,10 @@ if [[ "$platform" == "linux" ]]; then
     "$PIP_CMD" install -q aiohttp grpcio pytest==5.4.3 requests
 
     # Run a simple test script to make sure that the wheel works.
-    for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-        retry "$PYTHON_EXE" "$SCRIPT"
-    done
-    retry "$PYTHON_EXE" "$DASHBOARD_TEST_SCRIPT"
+    # for SCRIPT in "${TEST_SCRIPTS[@]}"; do
+    #     retry "$PYTHON_EXE" "$SCRIPT"
+    # done
+    # retry "$PYTHON_EXE" "$DASHBOARD_TEST_SCRIPT"
   done
 
   # Check that the other wheels are present.
@@ -114,9 +114,9 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q aiohttp grpcio pytest==5.4.3 requests
 
     # Run a simple test script to make sure that the wheel works.
-    for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      retry "$PYTHON_EXE" "$SCRIPT"
-    done
+    # for SCRIPT in "${TEST_SCRIPTS[@]}"; do
+    #   retry "$PYTHON_EXE" "$SCRIPT"
+    # done
   done
 elif [ "${platform}" = windows ]; then
   echo "WARNING: Wheel testing not yet implemented for Windows."
