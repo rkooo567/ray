@@ -68,7 +68,6 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
               ? std::dynamic_pointer_cast<ObjectDirectoryInterface>(
                     std::make_shared<OwnershipBasedObjectDirectory>(
                         main_service, gcs_client_,
-
                         [this](const ObjectID &obj_id) {
                           rpc::ObjectReference ref;
                           ref.set_object_id(obj_id.Binary());
