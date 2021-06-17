@@ -98,37 +98,65 @@ def round_robin_partitioner(input_stream: Iterable[InType], num_partitions: int
 @ray.remote
 class _StatusTracker:
     def __init__(self):
-        self.num_map = 0
-        self.num_reduce = 0
+        self.map_started = 0
+        self.reduce_started = 0
+        self.map_completed = 0
+        self.reduce_completed = 0
 
-    def inc(self):
-        self.num_map += 1
+    def map_started(self):
+        self.map_started += 1
 
-    def inc2(self):
-        self.num_reduce += 1
+    def reduce_started(self):
+        self.reduce_started += 1
+
+    def map_completed(self):
+        self.map_completed += 1
+
+    def reduce_completed(self):
+        self.reduce_completed += 1
 
     def get_progress(self):
-        return self.num_map, self.num_reduce
+        return (self.map_started, self.reduce_started, self.map_completed,
+                self.reduce_completed)
 
 
 def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
     from tqdm import tqdm
     num_map = 0
+    num_map_scheduled = 0
     num_reduce = 0
-    map_bar = tqdm(total=input_num_partitions, position=0)
-    map_bar.set_description("Map Progress.")
-    reduce_bar = tqdm(total=output_num_partitions, position=1)
-    reduce_bar.set_description("Reduce Progress.")
+    num_reduce_scheduled = 0
+
+    map_scheduled_bar = tqdm(total=input_num_partitions, position=0)
+    map_scheduled_bar.set_description("Map Scheduled.")
+    map_bar = tqdm(total=input_num_partitions, position=1)
+    map_bar.set_description("Map Completed.")
+
+    reduce_scheduled_bar = tqdm(total=output_num_partitions, position=2)
+    reduce_scheduled_bar.set_description("Reduce Scheduled.")
+    reduce_bar = tqdm(total=output_num_partitions, position=3)
+    reduce_bar.set_description("Reduce Completed.")
 
     while (num_map < input_num_partitions
            or num_reduce < output_num_partitions):
-        new_num_map, new_num_reduce = ray.get(tracker.get_progress.remote())
-        map_bar.update(new_num_map - num_map)
-        reduce_bar.update(new_num_reduce - num_reduce)
-        num_map = new_num_map
-        num_reduce = new_num_reduce
+        (map_started, reduce_started, map_completed,
+         reduce_completed) = ray.get(tracker.get_progress.remote())
+
+        map_scheduled_bar.update(map_started - num_map_scheduled)
+        map_bar.update(map_completed - num_map)
+        num_map_scheduled = map_started
+        num_map = map_completed
+
+        reduce_scheduled_bar.update(reduce_started - num_reduce_scheduled)
+        reduce_bar.update(reduce_completed - num_reduce)
+        num_reduce_scheduled = reduce_started
+        num_reduce = reduce_completed
+
         time.sleep(0.1)
+
+    map_scheduled_bar.close()
     map_bar.close()
+    reduce_scheduled_bar.close()
     reduce_bar.close()
 
 
@@ -167,6 +195,7 @@ def simple_shuffle(*,
 
     @ray.remote(num_returns=output_num_partitions)
     def shuffle_map(i: PartitionID) -> List[List[Union[Any, ObjectRef]]]:
+        tracker.map_started.remote()
         writers = [object_store_writer() for _ in range(output_num_partitions)]
         for out_i, item in partitioner(input_reader(i), output_num_partitions):
             writers[out_i].add(item)
@@ -176,6 +205,7 @@ def simple_shuffle(*,
     def shuffle_reduce(
             i: PartitionID,
             *mapper_outputs: List[List[Union[Any, ObjectRef]]]) -> OutType:
+        tracker.reduce_started.remote()
         input_objects = []
         assert len(mapper_outputs) == input_num_partitions
         for obj_refs in mapper_outputs:
@@ -262,7 +292,7 @@ def main(ray_address=None,
         for _ in range(num_partitions):
             yield np.ones(
                 (rows_per_partition // num_partitions, 2), dtype=np.int64)
-        tracker.inc.remote()
+        tracker.map_completed.remote()
 
     def output_writer(i: PartitionID,
                       shuffle_inputs: List[ObjectRef]) -> OutType:
@@ -278,7 +308,7 @@ def main(ray_address=None,
                 arr = ray.get(ready)
                 total += arr.size * arr.itemsize
 
-        tracker.inc2.remote()
+        tracker.reduce_completed.remote()
         return total
 
     def output_writer_non_streaming(i: PartitionID,
@@ -286,7 +316,7 @@ def main(ray_address=None,
         total = 0
         for arr in shuffle_inputs:
             total += arr.size * arr.itemsize
-        tracker.inc2.remote()
+        tracker.reduce_completed.remote()
         return total
 
     if args.no_streaming:
