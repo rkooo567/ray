@@ -9,6 +9,6 @@ python:
 post_build_cmds:
   # - pip install fastparquet
   - pip3 uninstall -y ray
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U https://s3-us-west-2.amazonaws.com/ray-wheels/test_wheels/spillback-args/c9861781926b08c48423a5f8d2dc861204e795bd/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
   - pip3 install -U ray[default]
   # - echo {{env["DATESTAMP"]}}
