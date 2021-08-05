@@ -1220,6 +1220,7 @@ def run_test_config(
                 # Start session
                 session_options = dict(
                     name=session_name, project_id=project_id)
+                session_options["idle_timeout"] = -1
 
                 if cluster_config is not None:
                     logging.info("Starting session with cluster config")
