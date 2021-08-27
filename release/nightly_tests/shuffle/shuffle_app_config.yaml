@@ -1,5 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37"
-env_vars: {"RAY_grpc_keepalive_time_ms": 1200000}
+env_vars: {"RAY_grpc_keepalive_time_ms": 1200000, "max_direct_call_object_size": 0}
 debian_packages: []
 
 python:
@@ -8,6 +8,6 @@ python:
 
 post_build_cmds:
   - pip uninstall -y ray
-  - pip3 install -U https://s3-us-west-2.amazonaws.com/ray-wheels/test_wheels/unpin_early/cd14f5bdcbbe2bc845053bc12c8c4f811c2ff149/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+  - pip3 install -U https://s3-us-west-2.amazonaws.com/ray-wheels/test_wheels/batch-obod/2454b6d83cfc11dec4d897760a939e3381d46f55/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
   - pip3 install -U ray[default]
   - echo {{env["DATESTAMP"]}}
