@@ -1,5 +1,8 @@
 import logging
 
+from ray._private.usage import usage_lib
+usage_lib.record_library_usage("rllib")
+
 # Note: do not introduce unnecessary library dependencies here, e.g. gym.
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.rllib.env.base_env import BaseEnv
@@ -12,7 +15,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.tune.registry import register_trainable
-from ray._private.usage import usage_lib
 
 
 def _setup_logger():
@@ -58,8 +60,6 @@ def _register_all():
 
 
 _setup_logger()
-
-usage_lib.record_library_usage("rllib")
 
 __all__ = [
     "Policy",
