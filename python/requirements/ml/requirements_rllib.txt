@@ -9,7 +9,7 @@ gymnasium[atari,mujoco]==0.26.3
 # For testing MuJoCo envs with gymnasium.
 mujoco-py<2.2,>=2.1
 # Kaggle envs.
-kaggle_environments==1.7.11
+kaggle_environments==1.9.10
 # Unity3D testing
 # TODO(sven): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
 #mlagents==0.28.0
