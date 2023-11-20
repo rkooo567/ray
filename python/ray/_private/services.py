@@ -1718,6 +1718,7 @@ def start_raylet(
         f"--session-name={session_name}",
         f"--gcs-address={gcs_address}",
     ]
+    print(dashboard_agent_command)
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
