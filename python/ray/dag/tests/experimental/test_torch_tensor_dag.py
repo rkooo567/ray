@@ -4,6 +4,7 @@ import os
 import re
 import sys
 from typing import List, Optional, Tuple
+from ray.dag.output_node import MultiOutputNode
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
@@ -68,6 +69,7 @@ class TorchTensorWorker:
         return torch.ones(shape, dtype=dtype, device=self.device) * value
 
     def recv(self, tensor):
+        # print(f"{tensor=}")
         # Check that tensor got loaded to the correct device.
         assert tensor.device == self.device
         return (tensor[0].item(), tensor.shape, tensor.dtype)
@@ -267,6 +269,52 @@ def test_torch_tensor_nccl(ray_start_regular):
     # to a ref counting assertion error.
     # ray.get(sender.ping.remote())
     # ray.get(receiver.ping.remote())
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_overlap(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 2
+    ), "This test requires at least 3 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender1 = actor_cls.remote()
+    sender2 = actor_cls.remote()
+    receiver = actor_cls.remote()
+    print(f"{receiver=}")
+
+    shape = (100000,)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        branch1 = sender1.send.bind(shape, dtype, inp)
+
+        branch1 = branch1.with_type_hint(
+            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+        )
+        branch1 = receiver.recv.bind(branch1)
+
+        branch2 = sender2.send.bind(shape, dtype, inp)
+        branch2 = branch2.with_type_hint(
+            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+        )
+        branch2 = receiver.recv.bind(branch2)
+        dag = MultiOutputNode([branch1, branch2])
+
+    # Test normal execution.
+    compiled_dag = dag.experimental_compile(_overlapping_factor=1)
+
+    for i in range(3):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        # print(f"{result=}")
+        assert result == [(i, shape, dtype), (i, shape, dtype)]
+
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)

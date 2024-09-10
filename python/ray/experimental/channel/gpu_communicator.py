@@ -14,6 +14,17 @@ TorchTensorAllocator = Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
 
 
 @DeveloperAPI
+class Event(ABC):
+    @abstractmethod
+    def record():
+        raise NotImplementedError
+
+    @abstractmethod
+    def synchronize():
+        raise NotImplementedError
+
+
+@DeveloperAPI
 class GPUCommunicator(ABC):
     """
     Communicator for a group of aDAG actors on Nvidia GPU.
@@ -88,7 +99,7 @@ class GPUCommunicator(ABC):
         dtype: "torch.dtype",
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
-    ) -> "torch.Tensor":
+    ) -> Tuple["torch.Tensor", Optional[Event]]:
         """
         Receive a torch.Tensor from a peer and synchronize.
 

@@ -1,6 +1,6 @@
 from functools import total_ordering
 from enum import Enum
-from typing import Set, Tuple, List, Dict
+from typing import Optional, Set, Tuple, List, Dict
 import ray
 import heapq
 from collections import defaultdict
@@ -18,12 +18,22 @@ class _DAGNodeOperationType(Enum):
     COMPUTE = "COMPUTE"
     WRITE = "WRITE"
 
+    def __str__(self):
+        if self == _DAGNodeOperationType.READ:
+            return "R"
+        elif self == _DAGNodeOperationType.COMPUTE:
+            return "C"
+        elif self == _DAGNodeOperationType.WRITE:
+            return "W"
+        assert False, f"Unknown operation type: {self}"
+
 
 class _DAGNodeOperation:
     def __init__(
         self,
         exec_task_idx: int,
         operation_type: _DAGNodeOperationType,
+        method_name: Optional[str] = None,
     ):
         """
         Args:
@@ -32,12 +42,42 @@ class _DAGNodeOperation:
                 as bind_index because there may be more tasks bound to an actor
                 than tasks that appear in the current compiled DAG.
             operation_type: The type of operation to perform.
+            method_name: The name of the method that this operation originates
+                from. This is only for debugging purposes.
         """
         self.exec_task_idx = exec_task_idx
         self.type = operation_type
+        self.method_name = method_name
+
+    def next_operation(self):
+        if self.type == _DAGNodeOperationType.READ:
+            return _DAGNodeOperation(
+                self.exec_task_idx, _DAGNodeOperationType.COMPUTE, self.method_name
+            )
+        elif self.type == _DAGNodeOperationType.COMPUTE:
+            return _DAGNodeOperation(
+                self.exec_task_idx, _DAGNodeOperationType.WRITE, self.method_name
+            )
+        else:
+            raise ValueError(
+                "Cannot only get next operation for READ or COMPUTE type, "
+                f"{self.type} is provided."
+            )
 
     def __repr__(self):
-        return f"(Task idx: {self.exec_task_idx}, Type: {self.type})"
+        return f"([{self.exec_task_idx}] {self.method_name} {self.type})"
+        # return f"(Task idx: {self.exec_task_idx}, Type: {self.type})"
+
+    def __str__(self):
+        return f"([{self.exec_task_idx}] {self.method_name} {self.type})"
+
+    def __hash__(self):
+        return hash((self.exec_task_idx, self.type))
+
+    def __eq__(self, other):
+        # An operation is uniquely identified by its `exec_task_idx` and type.
+        # `func_name` is only for debugging purposes.
+        return self.exec_task_idx == other.exec_task_idx and self.type == other.type
 
 
 @total_ordering
@@ -367,4 +407,56 @@ def _generate_actor_to_execution_schedule(
                     )
     for _, candidates in actor_to_candidates.items():
         assert len(candidates) == 0
+    for actor_handle, execution_schedule in actor_to_execution_schedule.items():
+        print(f"Actor {actor_handle._ray_actor_id} schedule: {execution_schedule}")
     return actor_to_execution_schedule
+
+
+def _optimize_execution_schedule(
+    actor_to_execution_schedule: Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]],
+    out_of_order_limit: int = 1,
+):
+    """
+    Optimize the execution schedule by overlapping computation and communication.
+
+    Args:
+        actor_to_execution_schedule: A dictionary that maps an actor handle to
+            the execution schedule which is a list of operations to be executed.
+        out_of_order_limit: The maximum number of out-of-order `receive` operations
+            allowed.
+    """
+    # TODO: analyze the DAG and turn off overlap optimization when it is
+    # not supported (yet). For example, currently if a channel requires
+    # both NCCL and shared memory transport, overlap optimization cannot
+    # be applied.
+    if out_of_order_limit == 0:
+        return actor_to_execution_schedule
+
+    actor_to_optimized_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGNodeOperation]
+    ] = defaultdict(list)
+    for actor, execution_schedule in actor_to_execution_schedule.items():
+        read_queue = []
+        other_queue = []
+        optimized_schedule = []
+        for operation in execution_schedule:
+            if operation.type == _DAGNodeOperationType.READ:
+                read_queue.append(operation)
+            else:
+                other_queue.append(operation)
+        out_of_order_quota = out_of_order_limit + 1
+        while other_queue:
+            other_op = other_queue[0]
+            if read_queue:
+                if out_of_order_quota > 0:
+                    optimized_schedule.append(read_queue.pop(0))
+                    out_of_order_quota -= 1
+                else:
+                    optimized_schedule.append(other_queue.pop(0))
+                    if other_op.type == _DAGNodeOperationType.WRITE:
+                        out_of_order_quota += 1
+            else:
+                optimized_schedule.append(other_queue.pop(0))
+        actor_to_optimized_schedule[actor] = optimized_schedule
+        print(f"Actor {actor._ray_actor_id} optimized schedule:", optimized_schedule)
+    return actor_to_optimized_schedule

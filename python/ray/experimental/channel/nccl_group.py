@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import ray
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.gpu_communicator import (
+    Event,
     GPUCommunicator,
     TorchTensorAllocator,
 )
@@ -18,6 +19,20 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+
+class _NcclEvent(Event):
+    def __init__(self):
+        import cupy as cp
+
+        self._event = cp.cuda.Event()
+
+    def record(self, stream):
+        self._event.record(stream)
+
+    def synchronize(self):
+        # TODO
+        pass
 
 
 class _NcclGroup(GPUCommunicator):
@@ -94,6 +109,7 @@ class _NcclGroup(GPUCommunicator):
             assert rank is not None, "NCCL actor has no rank assigned"
 
             import cupy as cp
+            import torch
 
             from ray.air._internal import torch_utils
 
@@ -101,6 +117,19 @@ class _NcclGroup(GPUCommunicator):
             device = torch_utils.get_devices()[0]
             self._cuda_stream = cp.cuda.ExternalStream(
                 cuda_stream, device_id=device.index
+            )
+
+            send_stream = torch.cuda.Stream()
+            recv_stream = torch.cuda.Stream()
+            self._send_stream = cp.cuda.ExternalStream(
+                send_stream.cuda_stream, device_id=device.index
+            )
+            self._recv_stream = cp.cuda.ExternalStream(
+                recv_stream.cuda_stream, device_id=device.index
+            )
+            print(
+                f"Inited streams, send={send_stream.cuda_stream}, "
+                f"recv={recv_stream.cuda_stream}"
             )
 
         self._closed = False
@@ -163,7 +192,7 @@ class _NcclGroup(GPUCommunicator):
             value.numel(),
             self.nccl_util.get_nccl_tensor_dtype(value),
             peer_rank,
-            self._cuda_stream.ptr,
+            self._send_stream.ptr,
         )
 
     def recv(
@@ -172,7 +201,7 @@ class _NcclGroup(GPUCommunicator):
         dtype: "torch.dtype",
         peer_rank: int,
         allocator=Optional[TorchTensorAllocator],
-    ) -> "torch.Tensor":
+    ) -> Tuple["torch.Tensor", "cp.cuda.Event"]:
         """
         Receive a torch.Tensor from a peer and synchronize the current stream.
 
@@ -188,22 +217,26 @@ class _NcclGroup(GPUCommunicator):
             raise RayChannelError("NCCL group has been destroyed.")
         assert allocator is not None, "NCCL group requires a tensor allocator"
         buf = allocator(shape, dtype)
+        import cupy as cp
+
+        event = cp.cuda.Event()
         self._comm.recv(
             self.nccl_util.get_tensor_ptr(buf),
             buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(buf),
             peer_rank,
-            self._cuda_stream.ptr,
+            self._recv_stream.ptr,
         )
+        event.record(self._recv_stream)
 
         # Buffer values are undefined if NCCL ops are aborted. Therefore, we
         # need to synchronize here and check that the channel is still open to
         # ensure that the receive buffer is valid.
         # TODO(swang): Avoid CUDA synchronization.
-        self._cuda_stream.synchronize()
+        # self._cuda_stream.synchronize()
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
-        return buf
+        return buf, event
 
     def destroy(self) -> None:
         """

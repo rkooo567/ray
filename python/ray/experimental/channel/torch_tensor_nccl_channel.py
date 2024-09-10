@@ -4,6 +4,8 @@ import uuid
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
+import cupy as cp
+
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
@@ -383,7 +385,10 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def read(
         self, timeout: Optional[float] = None
-    ) -> Union["torch.Tensor", List["torch.Tensor"]]:
+    ) -> Union[
+        Tuple["torch.Tensor", "cp.cuda.Event"],
+        List[Tuple["torch.Tensor", "cp.cuda.Event"]],
+    ]:
         if self._meta_channel is not None:
             meta = self._meta_channel.read()
         else:
@@ -397,7 +402,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 self._torch_tensor_allocator,
             )
 
-        bufs: List["torch.Tensor"] = []
+        bufs: List[Tuple["torch.Tensor", "cp.cuda.Event"]] = []
         for typ in meta:
             buf = self._nccl_group.recv(
                 typ._shape,
@@ -406,8 +411,6 @@ class TorchTensorNcclChannel(ChannelInterface):
                 self._torch_tensor_allocator,
             )
             bufs.append(buf)
-        # TODO: Sync CUDA stream after receiving all tensors, instead of after
-        # each tensor.
         return bufs
 
     def close(self) -> None:
@@ -444,6 +447,7 @@ def _do_init_nccl_group(
     ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
+    print(f"_do_init_nccl_group() with {custom_nccl_group=}")
     if custom_nccl_group is not None:
         custom_nccl_group.initialize(rank)
         ctx.nccl_groups[group_id] = custom_nccl_group
