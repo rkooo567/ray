@@ -984,6 +984,7 @@ class Worker:
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
+        print(f"SANG-TODO {list(assigned_ids)=}")
         return list(assigned_ids)
 
 

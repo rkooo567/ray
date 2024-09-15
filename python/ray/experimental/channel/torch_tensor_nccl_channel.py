@@ -470,6 +470,7 @@ def _do_check_has_gpu(self) -> bool:
 
 
 def _do_get_unique_nccl_id(self) -> bool:
+    import torch
     from cupy.cuda import nccl
 
     return nccl.get_unique_id()

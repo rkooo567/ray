@@ -1012,7 +1012,9 @@ void LocalTaskManager::Dispatch(
     bool first = true;  // Set resource name only if at least one of its
                         // instances has available capacity.
     auto instances = allocated_resources->Get(resource_id);
+    RAY_LOG(ERROR) << "SANG-TODO resource_id " << resource_id << " binary " << resource_id.Binary() << " instances.size() " << instances.size();
     for (size_t inst_idx = 0; inst_idx < instances.size(); inst_idx++) {
+      RAY_LOG(ERROR) << "SANG-TODO instances[inst_idx] " << instances[inst_idx];
       if (instances[inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
