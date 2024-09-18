@@ -1,11 +1,10 @@
 import logging
 from types import ModuleType
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.gpu_communicator import (
-    Event,
     GPUCommunicator,
     TorchTensorAllocator,
 )
@@ -19,20 +18,6 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-
-class _NcclEvent(Event):
-    def __init__(self):
-        import cupy as cp
-
-        self._event = cp.cuda.Event()
-
-    def record(self, stream):
-        self._event.record(stream)
-
-    def synchronize(self):
-        # TODO
-        pass
 
 
 class _NcclGroup(GPUCommunicator):
@@ -50,6 +35,7 @@ class _NcclGroup(GPUCommunicator):
         rank: Optional[int],
         actor_handles: List["ray.actor.ActorHandle"],
         cuda_stream: Optional[int],
+        dedicated_streams: bool = False,
     ):
         """
         Initialize a NCCL communicator that can be used to communicate p2p with
@@ -81,11 +67,17 @@ class _NcclGroup(GPUCommunicator):
             actor_handles: A list of actor handles, in rank order.
             cuda_stream: A raw CUDA stream to dispatch NCCL ops to. If rank is
                 specified, then this must be specified too.
+            dedicated_streams: Whether to use one dedicated stream for `send`
+                and another for `recv`. This is useful for overlapping communication
+                with computation.
+                If this is True, then `cuda_stream` is not used and new streams
+                are created.
         """
         self._world_size = world_size
         self._rank: Optional[int] = rank
         self.nccl_util: Optional[ModuleType] = None
         self._actor_handles = actor_handles
+        self._dedicated_streams = dedicated_streams
 
         if rank is not None:
             assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
@@ -109,7 +101,6 @@ class _NcclGroup(GPUCommunicator):
             assert rank is not None, "NCCL actor has no rank assigned"
 
             import cupy as cp
-            import torch
 
             from ray.air._internal import torch_utils
 
@@ -119,18 +110,15 @@ class _NcclGroup(GPUCommunicator):
                 cuda_stream, device_id=device.index
             )
 
-            send_stream = torch.cuda.Stream()
-            recv_stream = torch.cuda.Stream()
-            self._send_stream = cp.cuda.ExternalStream(
-                send_stream.cuda_stream, device_id=device.index
-            )
-            self._recv_stream = cp.cuda.ExternalStream(
-                recv_stream.cuda_stream, device_id=device.index
-            )
-            print(
-                f"Inited streams, send={send_stream.cuda_stream}, "
-                f"recv={recv_stream.cuda_stream}"
-            )
+            if dedicated_streams:
+                import torch
+
+                self._send_stream = cp.cuda.ExternalStream(
+                    torch.cuda.Stream().cuda_stream, device_id=device.index
+                )
+                self._recv_stream = cp.cuda.ExternalStream(
+                    torch.cuda.Stream().cuda_stream, device_id=device.index
+                )
 
         self._closed = False
 
@@ -192,7 +180,7 @@ class _NcclGroup(GPUCommunicator):
             value.numel(),
             self.nccl_util.get_nccl_tensor_dtype(value),
             peer_rank,
-            self._send_stream.ptr,
+            self._send_stream.ptr if self._dedicated_streams else self._cuda_stream.ptr,
         )
 
     def recv(
@@ -201,7 +189,7 @@ class _NcclGroup(GPUCommunicator):
         dtype: "torch.dtype",
         peer_rank: int,
         allocator=Optional[TorchTensorAllocator],
-    ) -> Tuple["torch.Tensor", "cp.cuda.Event"]:
+    ) -> Union["torch.Tensor", Tuple["torch.Tensor", "cp.cuda.Event"]]:
         """
         Receive a torch.Tensor from a peer and synchronize the current stream.
 
@@ -219,24 +207,36 @@ class _NcclGroup(GPUCommunicator):
         buf = allocator(shape, dtype)
         import cupy as cp
 
-        event = cp.cuda.Event()
-        self._comm.recv(
-            self.nccl_util.get_tensor_ptr(buf),
-            buf.numel(),
-            self.nccl_util.get_nccl_tensor_dtype(buf),
-            peer_rank,
-            self._recv_stream.ptr,
-        )
-        event.record(self._recv_stream)
+        if self._dedicated_streams:
+            event = cp.cuda.Event()
+            self._comm.recv(
+                self.nccl_util.get_tensor_ptr(buf),
+                buf.numel(),
+                self.nccl_util.get_nccl_tensor_dtype(buf),
+                peer_rank,
+                self._recv_stream.ptr,
+            )
+            event.record(self._recv_stream)
+            if self._closed:
+                raise RayChannelError("NCCL group has been destroyed.")
+            return buf, event
+        else:
+            self._comm.recv(
+                self.nccl_util.get_tensor_ptr(buf),
+                buf.numel(),
+                self.nccl_util.get_nccl_tensor_dtype(buf),
+                peer_rank,
+                self._cuda_stream.ptr,
+            )
 
-        # Buffer values are undefined if NCCL ops are aborted. Therefore, we
-        # need to synchronize here and check that the channel is still open to
-        # ensure that the receive buffer is valid.
-        # TODO(swang): Avoid CUDA synchronization.
-        # self._cuda_stream.synchronize()
-        if self._closed:
-            raise RayChannelError("NCCL group has been destroyed.")
-        return buf, event
+            # Buffer values are undefined if NCCL ops are aborted. Therefore, we
+            # need to synchronize here and check that the channel is still open to
+            # ensure that the receive buffer is valid.
+            # TODO(swang): Avoid CUDA synchronization.
+            self._cuda_stream.synchronize()
+            if self._closed:
+                raise RayChannelError("NCCL group has been destroyed.")
+            return buf
 
     def destroy(self) -> None:
         """

@@ -99,6 +99,7 @@ def do_exec_tasks(
     actor. This runs an infinite loop to execute each _DAGNodeOperation in the
     order specified by the schedule. It exits only if the actor dies or an
     exception is thrown.
+
     Args:
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
@@ -180,9 +181,10 @@ def do_stream_tasks(
     schedule: List[_DAGNodeOperation],
 ) -> None:
     """A generic actor method to begin executing the operations belonging to an
-    actor. This runs an infinite loop to execute each _DAGNodeOperation in the
-    order specified by the schedule. It exits only if the actor dies or an
-    exception is thrown.
+    actor in a streamed fashion (i.e., allowing overlapping computation and
+    communication). This runs an infinite loop to execute each _DAGNodeOperation
+    in the order specified by the schedule, with dedicated read, compute and write
+    Cuda streams. It exits only if the actor dies or an exception is thrown.
 
     Args:
         tasks: the executable tasks corresponding to the actor methods.
@@ -222,10 +224,7 @@ def do_profile_stream_tasks(
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
 ) -> None:
-    """A generic actor method to begin executing the operations belonging to an
-    actor. This runs an infinite loop to execute each _DAGNodeOperation in the
-    order specified by the schedule. It exits only if the actor dies or an
-    exception is thrown.
+    """Similar to `do_stream_tasks`, but with torch profiling enabled.
 
     Args:
         tasks: the executable tasks corresponding to the actor methods.
@@ -617,8 +616,8 @@ class ExecutableTask:
 
     def reset_stream_buffer(self, op: _DAGNodeOperation) -> Any:
         """
-        Retrieve the intermediate result of a READ or COMPUTE operation,
-        and clear the entry from the buffer.
+        Retrieve the intermediate result of a READ or COMPUTE operation
+        from the stream buffer and clear the entry from the buffer.
 
         Returns:
             The intermediate result of a READ or COMPUTE operation.
@@ -627,8 +626,7 @@ class ExecutableTask:
 
     def _stream_read(self, op: _DAGNodeOperation) -> bool:
         """
-        Stream read input data from upstream DAG nodes and cache the
-        intermediate result.
+        Read input data from upstream DAG nodes and cache the intermediate result.
 
         Args:
             op: The READ operation.
@@ -648,7 +646,8 @@ class ExecutableTask:
     def _stream_compute(self, op: _DAGNodeOperation, exec_stream, class_handle) -> bool:
         """
         Retrieve the intermediate result from the READ operation and perform the
-        computation. Then, cache the new intermediate result.
+        computation on the provided execution stream. Then, cache the new
+        intermediate result.
 
         Args:
             op: The compute operation.

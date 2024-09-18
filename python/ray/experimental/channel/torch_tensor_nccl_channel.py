@@ -386,6 +386,8 @@ class TorchTensorNcclChannel(ChannelInterface):
     def read(
         self, timeout: Optional[float] = None
     ) -> Union[
+        "torch.Tensor",
+        List["torch.Tensor"],
         Tuple["torch.Tensor", "cp.cuda.Event"],
         List[Tuple["torch.Tensor", "cp.cuda.Event"]],
     ]:
@@ -402,7 +404,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 self._torch_tensor_allocator,
             )
 
-        bufs: List[Tuple["torch.Tensor", "cp.cuda.Event"]] = []
+        bufs: List[Union["torch.Tensor", Tuple["torch.Tensor", "cp.cuda.Event"]]] = []
         for typ in meta:
             buf = self._nccl_group.recv(
                 typ._shape,
@@ -447,7 +449,6 @@ def _do_init_nccl_group(
     ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
-    print(f"_do_init_nccl_group() with {custom_nccl_group=}")
     if custom_nccl_group is not None:
         custom_nccl_group.initialize(rank)
         ctx.nccl_groups[group_id] = custom_nccl_group
