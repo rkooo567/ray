@@ -306,7 +306,7 @@ def test_torch_tensor_nccl_overlap(ray_start_regular):
         dag = MultiOutputNode([branch1, branch2])
 
     # Test normal execution.
-    compiled_dag = dag.experimental_compile(_overlapping_factor=1)
+    compiled_dag = dag.experimental_compile(_overlap_gpu_communication=True)
 
     for i in range(3):
         ref = compiled_dag.execute(i)

@@ -794,7 +794,7 @@ class CompiledDAG:
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
         max_inflight_executions: Optional[int] = None,
-        overlapping_factor: Optional[float] = None,
+        overlap_gpu_communication: Optional[bool] = None,
     ):
         """
         Args:
@@ -827,11 +827,11 @@ class CompiledDAG:
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to get the result,
                 otherwise, RayAdagCapacityExceeded is raised.
-            overlapping_factor: Controls the degree of overlapping computation and
-                communication in aDAG execution. If None, the default value is used.
-                If 0, no overlapping is allowed. If 1, the communication and
-                computation are overlapped with the minimal degree. No other values
-                are supported at the moment.
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution. If True, the communication
+                and computation can be overlapped, which can improve the
+                performance of the DAG execution. If None, the default value
+                will be used.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -857,9 +857,9 @@ class CompiledDAG:
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
-        self._overlapping_factor: Optional[float] = overlapping_factor
-        if self._overlapping_factor is None:
-            self._overlapping_factor = ctx.overlapping_factor
+        self._overlap_gpu_communication: Optional[bool] = overlap_gpu_communication
+        if self._overlap_gpu_communication is None:
+            self._overlap_gpu_communication = ctx.overlap_gpu_communication
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             self._buffer_size_bytes,
@@ -1597,7 +1597,7 @@ class CompiledDAG:
 
         if RAY_ADAG_ENABLE_PROFILING:
             exec_task_func = do_profile_tasks
-        elif self._overlapping_factor:
+        elif self._overlap_gpu_communication:
             if RAY_ADAG_ENABLE_TORCH_PROFILING:
                 exec_task_func = do_profile_stream_tasks
             else:
@@ -1767,7 +1767,7 @@ class CompiledDAG:
 
         # Step 3: Optimize the execution schedule based on overlapping factor
         actor_to_optimized_schedule = _optimize_execution_schedule(
-            actor_to_execution_schedule, self._overlapping_factor
+            actor_to_execution_schedule, self._overlap_gpu_communication
         )
         return actor_to_optimized_schedule
 
@@ -2348,7 +2348,7 @@ def build_compiled_dag_from_ray_dag(
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
     max_inflight_executions: Optional[int] = None,
-    overlapping_factor: Optional[int] = None,
+    overlap_gpu_communication: Optional[bool] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         execution_timeout,
@@ -2357,7 +2357,7 @@ def build_compiled_dag_from_ray_dag(
         asyncio_max_queue_size,
         max_buffered_results,
         max_inflight_executions,
-        overlapping_factor,
+        overlap_gpu_communication,
     )
 
     def _build_compiled_dag(node):
