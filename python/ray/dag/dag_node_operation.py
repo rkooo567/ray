@@ -164,7 +164,13 @@ class _DAGOperationGraphNode:
         return hash((self.operation, self.task_idx))
 
     def __str__(self):
-        return f"[{self.operation.exec_task_idx}] {self.operation.method_name} {self.operation.type}"
+        class_name = self.actor_handle._ray_actor_creation_function_descriptor.class_name
+        actor_id = self.actor_handle._actor_id.hex()
+        return (
+            class_name + "_" + actor_id[:4]
+            + f" [{self.operation.exec_task_idx}] "
+            + f"{self.operation.method_name} {self.operation.type}"
+        )
 
 
 def _add_edge(
@@ -250,6 +256,11 @@ def _select_next_nodes(
     return next_nodes
 
 
+def _node_label(node: _DAGOperationGraphNode):
+    actor = str(node.actor_handle._actor_id)[:6]
+    return f"[{node.task_idx}] {node.operation.method_name} {node.operation.type}"
+
+
 def _visualize_graph(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]
 ):
@@ -259,7 +270,7 @@ def _visualize_graph(
     for task_idx, dict in graph.items():
         for node in dict.values():
             node_label = str(node)
-            dot.node(str(node), node_label)
+            dot.node(node_label, node_label)
 
             # # Add in_edges
             # for in_edge, label in node.in_edges.items():
@@ -271,7 +282,8 @@ def _visualize_graph(
             for out_edge, label in node.out_edges.items():
                 out_task_idx, out_op_type = out_edge
                 out_node = graph[out_task_idx][out_op_type]
-                dot.edge(str(node), str(out_node), label=label)
+                color= "blue" if label == "nccl" else "black"
+                dot.edge(node_label, str(out_node), label=label, color=color)
 
     # Render the graph to a file or display it
     dot.render("dag_graph", format="png", view=True)
@@ -372,7 +384,7 @@ def _build_dag_node_operation_graph(
                 graph[downstream_task_idx][_DAGNodeOperationType.READ],
                 "nccl"
                 if graph[task_idx][_DAGNodeOperationType.WRITE].requires_nccl
-                else "data",
+                else "shm",
             )
     _visualize_graph(graph)
     return graph
