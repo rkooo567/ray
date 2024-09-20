@@ -1,6 +1,7 @@
 from functools import total_ordering
 from enum import Enum
-from typing import Optional, Set, Tuple, List, Dict
+from typing import Optional, Tuple, List, Dict
+import graphviz
 import ray
 import heapq
 from collections import defaultdict
@@ -110,8 +111,8 @@ class _DAGOperationGraphNode:
         # an integer `task_idx`, which can be used to index into `idx_to_task`
         # to get the corresponding task, and a `_DAGNodeOperationType`, which can
         # be READ, COMPUTE, or WRITE.
-        self.in_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
-        self.out_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
+        self.in_edges: Dict[Tuple[int, _DAGNodeOperationType]] = {}
+        self.out_edges: Dict[Tuple[int, _DAGNodeOperationType]] = {}
 
     @property
     def in_degree(self) -> int:
@@ -162,14 +163,19 @@ class _DAGOperationGraphNode:
         """
         return hash((self.operation, self.task_idx))
 
+    def __str__(self):
+        return f"[{self.operation.exec_task_idx}] {self.operation.method_name} {self.operation.type}"
 
-def _add_edge(from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode):
+
+def _add_edge(
+    from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode, label=""
+):
     """
     Add an edge from `from_node` to `to_node`. An edge is a tuple of
     the operation's `task_idx` and type.
     """
-    from_node.out_edges.add((to_node.task_idx, to_node.operation.type))
-    to_node.in_edges.add((from_node.task_idx, from_node.operation.type))
+    from_node.out_edges[(to_node.task_idx, to_node.operation.type)] = label
+    to_node.in_edges[(from_node.task_idx, from_node.operation.type)] = label
 
 
 def _select_next_nodes(
@@ -244,6 +250,33 @@ def _select_next_nodes(
     return next_nodes
 
 
+def _visualize_graph(
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]
+):
+    dot = graphviz.Digraph(comment="DAG")
+
+    # Add nodes and edges to the graph
+    for task_idx, dict in graph.items():
+        for node in dict.values():
+            node_label = str(node)
+            dot.node(str(node), node_label)
+
+            # # Add in_edges
+            # for in_edge, label in node.in_edges.items():
+            #     in_task_idx, in_op_type = in_edge
+            #     in_node = graph[in_task_idx][in_op_type]
+            #     dot.edge(str(in_node), str(node), label="")
+
+            # Add out_edges
+            for out_edge, label in node.out_edges.items():
+                out_task_idx, out_op_type = out_edge
+                out_node = graph[out_task_idx][out_op_type]
+                dot.edge(str(node), str(out_node), label=label)
+
+    # Render the graph to a file or display it
+    dot.render("dag_graph", format="png", view=True)
+
+
 def _build_dag_node_operation_graph(
     idx_to_task: Dict[int, "ray.dag.compiled_dag_node.CompiledTask"],
     actor_to_operation_nodes: Dict[
@@ -298,7 +331,7 @@ def _build_dag_node_operation_graph(
             # Add an edge from COMPUTE with `bind_index` i to COMPUTE with
             # `bind_index` i+1 if they belong to the same actor.
             if prev_compute_node is not None:
-                _add_edge(prev_compute_node, compute_node)
+                _add_edge(prev_compute_node, compute_node, "next")
             prev_compute_node = compute_node
             assert task_idx not in graph
             graph[task_idx] = {
@@ -337,7 +370,11 @@ def _build_dag_node_operation_graph(
             _add_edge(
                 graph[task_idx][_DAGNodeOperationType.WRITE],
                 graph[downstream_task_idx][_DAGNodeOperationType.READ],
+                "nccl"
+                if graph[task_idx][_DAGNodeOperationType.WRITE].requires_nccl
+                else "data",
             )
+    _visualize_graph(graph)
     return graph
 
 
@@ -399,7 +436,7 @@ def _generate_actor_to_execution_schedule(
             visited_nodes.add(node)
             for out_node_task_idx, out_node_type in node.out_edges:
                 out_node = graph[out_node_task_idx][out_node_type]
-                out_node.in_edges.remove((node.task_idx, node.operation.type))
+                out_node.in_edges.pop((node.task_idx, node.operation.type))
                 if out_node.in_degree == 0:
                     heapq.heappush(
                         actor_to_candidates[out_node.actor_handle._actor_id],

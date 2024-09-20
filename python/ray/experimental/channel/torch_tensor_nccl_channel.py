@@ -4,8 +4,6 @@ import uuid
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
-import cupy as cp
-
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
