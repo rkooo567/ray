@@ -676,7 +676,7 @@ class ExecutableTask:
             if isinstance(entry, tuple):
                 channel_result, event = entry
                 if event:
-                    event.synchronize()
+                    exec_stream.wait_event(event)
             else:
                 channel_result = entry
             channel_results.append(channel_result)
