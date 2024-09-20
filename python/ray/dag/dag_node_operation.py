@@ -164,13 +164,20 @@ class _DAGOperationGraphNode:
         return hash((self.operation, self.task_idx))
 
     def __str__(self):
-        class_name = self.actor_handle._ray_actor_creation_function_descriptor.class_name
+        class_name = (
+            self.actor_handle._ray_actor_creation_function_descriptor.class_name
+        )
         actor_id = self.actor_handle._actor_id.hex()
         return (
-            class_name + "_" + actor_id[:4]
+            class_name
+            + "_"
+            + actor_id[:4]
             + f" [{self.operation.exec_task_idx}] "
             + f"{self.operation.method_name} {self.operation.type}"
         )
+
+    def _get_actor_id(self):
+        return self.actor_handle._ray_actor_id.hex()
 
 
 def _add_edge(
@@ -256,21 +263,20 @@ def _select_next_nodes(
     return next_nodes
 
 
-def _node_label(node: _DAGOperationGraphNode):
-    actor = str(node.actor_handle._actor_id)[:6]
-    return f"[{node.task_idx}] {node.operation.method_name} {node.operation.type}"
-
-
 def _visualize_graph(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]
 ):
     dot = graphviz.Digraph(comment="DAG")
+
+    actor_to_nodes = defaultdict(list)
 
     # Add nodes and edges to the graph
     for task_idx, dict in graph.items():
         for node in dict.values():
             node_label = str(node)
             dot.node(node_label, node_label)
+
+            actor_to_nodes[node._get_actor_id()].append(node)
 
             # # Add in_edges
             # for in_edge, label in node.in_edges.items():
@@ -282,8 +288,14 @@ def _visualize_graph(
             for out_edge, label in node.out_edges.items():
                 out_task_idx, out_op_type = out_edge
                 out_node = graph[out_task_idx][out_op_type]
-                color= "blue" if label == "nccl" else "black"
+                color = "blue" if label == "nccl" else "black"
                 dot.edge(node_label, str(out_node), label=label, color=color)
+
+    for actor_id, nodes in actor_to_nodes.items():
+        with dot.subgraph(name=f"cluster_{actor_id}") as subgraph:
+            subgraph.attr(rank=nodes[0]._get_actor_id())
+            for node in nodes:
+                subgraph.node(str(node), str(node))
 
     # Render the graph to a file or display it
     dot.render("dag_graph", format="png", view=True)
