@@ -402,28 +402,39 @@ def _build_dag_node_operation_graph(
     return graph
 
 
-def _node_repr(node: _DAGOperationGraphNode, idx: int):
-    return str(node) + f" {idx}"
+def _node_repr(node: _DAGOperationGraphNode, idx: int, optimized_index):
+    return str(node) + f" {idx},{optimized_index}"
 
 
 def _visualize_graph_ordered(
-    actor_to_nodes: Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]],
+    actor_to_execution_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
+    actor_to_optimized_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
 ):
     dot = graphviz.Digraph(comment="DAG")
     node_to_node_repr = {}
 
-    for actor, nodes in actor_to_nodes.items():
-        with dot.subgraph(name=f"cluster_{nodes[0]._get_actor_id()}") as subgraph:
-            subgraph.attr(rank=nodes[0]._get_actor_id())
-            for i, node in enumerate(nodes):
-                node_repr = _node_repr(node, i)
-                subgraph.node(node_repr, node_repr)
-                node_to_node_repr[node] = node_repr
-    print(node_to_node_repr)
+    for actor, execution_nodes in actor_to_execution_nodes.items():
+        optimized_nodes = actor_to_optimized_nodes[actor]
+        node_to_optimized_index = {node: i for i, node in enumerate(optimized_nodes)}
 
-    for actor, nodes in actor_to_nodes.items():
-        for i, node in enumerate(nodes):
+        with dot.subgraph(
+            name=f"cluster_{execution_nodes[0]._get_actor_id()}"
+        ) as subgraph:
+            subgraph.attr(rank=execution_nodes[0]._get_actor_id())
+            for i, node in enumerate(execution_nodes):
+                optimized_index = node_to_optimized_index.get(node)
+                node_repr = _node_repr(node, i, optimized_index)
+                color = "red" if optimized_index != i else "black"
+                subgraph.node(node_repr, node_repr, color=color)
+                node_to_node_repr[node] = node_repr
+
+    for actor, execution_nodes in actor_to_execution_nodes.items():
+        for i, node in enumerate(execution_nodes):
             node_repr = node_to_node_repr[node]
             for out_edge, label in node.out_edges.items():
                 out_task_idx, out_op_type = out_edge
@@ -461,7 +472,7 @@ def _generate_actor_to_execution_schedule(
     actor_to_execution_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGNodeOperation]
     ] = defaultdict(list)
-    actor_to_nodes: Dict[
+    actor_to_execution_nodes: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = defaultdict(list)
 
@@ -494,7 +505,7 @@ def _generate_actor_to_execution_schedule(
             if node in visited_nodes:
                 continue
             actor_to_execution_schedule[node.actor_handle].append(node.operation)
-            actor_to_nodes[node.actor_handle].append(node)
+            actor_to_execution_nodes[node.actor_handle].append(node)
             visited_nodes.add(node)
             for out_node_task_idx, out_node_type in node.out_edges:
                 out_node = graph[out_node_task_idx][out_node_type]
@@ -508,12 +519,15 @@ def _generate_actor_to_execution_schedule(
         assert len(candidates) == 0
     for actor_handle, execution_schedule in actor_to_execution_schedule.items():
         print(f"Actor {actor_handle._ray_actor_id} schedule: {execution_schedule}")
-    _visualize_graph_ordered(actor_to_nodes, graph)
-    return actor_to_execution_schedule
+    # _visualize_graph_ordered(actor_to_nodes, graph)
+    return actor_to_execution_schedule, actor_to_execution_nodes
 
 
 def _optimize_execution_schedule(
     actor_to_execution_schedule: Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]],
+    actor_to_execution_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
     out_of_order_limit: int = 1,
 ):
     """
@@ -530,33 +544,44 @@ def _optimize_execution_schedule(
     # both NCCL and shared memory transport, overlap optimization cannot
     # be applied.
     if out_of_order_limit == 0:
-        return actor_to_execution_schedule
+        return actor_to_execution_schedule, actor_to_execution_nodes
 
     actor_to_optimized_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGNodeOperation]
     ] = defaultdict(list)
-    for actor, execution_schedule in actor_to_execution_schedule.items():
+    actor_to_optimized_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ] = defaultdict(list)
+    for actor, execution_nodes in actor_to_execution_nodes.items():
         read_queue = []
         other_queue = []
         optimized_schedule = []
-        for operation in execution_schedule:
-            if operation.type == _DAGNodeOperationType.READ:
-                read_queue.append(operation)
+        optimized_nodes = []
+        for node in execution_nodes:
+            if node.operation.type == _DAGNodeOperationType.READ:
+                read_queue.append(node)
             else:
-                other_queue.append(operation)
+                other_queue.append(node)
         out_of_order_quota = out_of_order_limit + 1
         while other_queue:
-            other_op = other_queue[0]
+            other_node = other_queue[0]
             if read_queue:
                 if out_of_order_quota > 0:
-                    optimized_schedule.append(read_queue.pop(0))
+                    picked = read_queue.pop(0)
+                    optimized_nodes.append(picked)
+                    optimized_schedule.append(picked.operation)
                     out_of_order_quota -= 1
                 else:
-                    optimized_schedule.append(other_queue.pop(0))
-                    if other_op.type == _DAGNodeOperationType.WRITE:
+                    picked = other_queue.pop(0)
+                    optimized_nodes.append(picked)
+                    optimized_schedule.append(picked.operation)
+                    if other_node.operation.type == _DAGNodeOperationType.WRITE:
                         out_of_order_quota += 1
             else:
-                optimized_schedule.append(other_queue.pop(0))
+                picked = other_queue.pop(0)
+                optimized_nodes.append(picked)
+                optimized_schedule.append(picked.operation)
+        actor_to_optimized_nodes[actor] = optimized_nodes
         actor_to_optimized_schedule[actor] = optimized_schedule
         print(f"Actor {actor._ray_actor_id} optimized schedule:", optimized_schedule)
-    return actor_to_optimized_schedule
+    return actor_to_optimized_schedule, actor_to_optimized_nodes

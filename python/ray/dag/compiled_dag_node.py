@@ -46,6 +46,7 @@ from ray.dag.dag_node_operation import (
     _build_dag_node_operation_graph,
     _generate_actor_to_execution_schedule,
     _optimize_execution_schedule,
+    _visualize_graph_ordered,
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -1763,11 +1764,22 @@ class CompiledDAG:
             self.idx_to_task, actor_to_operation_nodes
         )
         # Step 2: Generate an execution schedule for each actor using topological sort
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        (
+            actor_to_execution_schedule,
+            actor_to_execution_nodes,
+        ) = _generate_actor_to_execution_schedule(graph)
 
         # Step 3: Optimize the execution schedule based on overlapping factor
-        actor_to_optimized_schedule = _optimize_execution_schedule(
-            actor_to_execution_schedule, self._overlap_gpu_communication
+        (
+            actor_to_optimized_schedule,
+            actor_to_optimized_nodes,
+        ) = _optimize_execution_schedule(
+            actor_to_execution_schedule,
+            actor_to_execution_nodes,
+            self._overlap_gpu_communication,
+        )
+        _visualize_graph_ordered(
+            actor_to_execution_nodes, actor_to_optimized_nodes, graph
         )
         return actor_to_optimized_schedule
 
