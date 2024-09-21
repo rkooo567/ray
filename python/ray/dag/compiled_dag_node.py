@@ -1699,6 +1699,11 @@ class CompiledDAG:
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
+                upstream_requires_nccl = False
+                for upstream_node in dag_node._upstream_nodes:
+                    if upstream_node.type_hint.requires_nccl():
+                        upstream_requires_nccl = True
+                        break
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1706,7 +1711,7 @@ class CompiledDAG:
                     ),
                     task_index,
                     actor_handle,
-                    requires_nccl,
+                    upstream_requires_nccl,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1714,7 +1719,7 @@ class CompiledDAG:
                     ),
                     task_index,
                     actor_handle,
-                    requires_nccl,
+                    False,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
