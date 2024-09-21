@@ -398,8 +398,42 @@ def _build_dag_node_operation_graph(
                 if graph[task_idx][_DAGNodeOperationType.WRITE].requires_nccl
                 else "shm",
             )
-    _visualize_graph(graph)
+    # _visualize_graph(graph)
     return graph
+
+
+def _node_repr(node: _DAGOperationGraphNode, idx: int):
+    return str(node) + f" {idx}"
+
+
+def _visualize_graph_ordered(
+    actor_to_nodes: Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]],
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
+):
+    dot = graphviz.Digraph(comment="DAG")
+    node_to_node_repr = {}
+
+    for actor, nodes in actor_to_nodes.items():
+        with dot.subgraph(name=f"cluster_{nodes[0]._get_actor_id()}") as subgraph:
+            subgraph.attr(rank=nodes[0]._get_actor_id())
+            for i, node in enumerate(nodes):
+                node_repr = _node_repr(node, i)
+                subgraph.node(node_repr, node_repr)
+                node_to_node_repr[node] = node_repr
+    print(node_to_node_repr)
+
+    for actor, nodes in actor_to_nodes.items():
+        for i, node in enumerate(nodes):
+            node_repr = node_to_node_repr[node]
+            for out_edge, label in node.out_edges.items():
+                out_task_idx, out_op_type = out_edge
+                out_node = graph[out_task_idx][out_op_type]
+                out_node_repr = node_to_node_repr[out_node]
+                color = "blue" if label == "nccl" else "black"
+                dot.edge(node_repr, out_node_repr, label=label, color=color)
+
+    # Render the graph to a file or display it
+    dot.render("dag_schedule", format="png", view=True)
 
 
 def _generate_actor_to_execution_schedule(
@@ -426,6 +460,9 @@ def _generate_actor_to_execution_schedule(
     # of operations to be executed.
     actor_to_execution_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGNodeOperation]
+    ] = defaultdict(list)
+    actor_to_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = defaultdict(list)
 
     # A dictionary mapping an actor id to a list of candidate nodes. The list
@@ -457,6 +494,7 @@ def _generate_actor_to_execution_schedule(
             if node in visited_nodes:
                 continue
             actor_to_execution_schedule[node.actor_handle].append(node.operation)
+            actor_to_nodes[node.actor_handle].append(node)
             visited_nodes.add(node)
             for out_node_task_idx, out_node_type in node.out_edges:
                 out_node = graph[out_node_task_idx][out_node_type]
@@ -470,6 +508,7 @@ def _generate_actor_to_execution_schedule(
         assert len(candidates) == 0
     for actor_handle, execution_schedule in actor_to_execution_schedule.items():
         print(f"Actor {actor_handle._ray_actor_id} schedule: {execution_schedule}")
+    _visualize_graph_ordered(actor_to_nodes, graph)
     return actor_to_execution_schedule
 
 
