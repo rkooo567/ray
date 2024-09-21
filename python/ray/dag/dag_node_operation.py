@@ -554,7 +554,7 @@ def _optimize_execution_schedule(
         slow = 0
         optimized_schedule = []
         optimized_nodes = []
-        out_of_order_quota = out_of_order_limit + 1
+        out_of_order_quota = out_of_order_limit
         while slow < len(execution_nodes):
             while out_of_order_quota > 0 and fast < len(execution_nodes):
                 if (
@@ -563,7 +563,16 @@ def _optimize_execution_schedule(
                 ):
                     optimized_nodes.append(execution_nodes[fast])
                     optimized_schedule.append(execution_nodes[fast].operation)
-                    out_of_order_quota -= 1
+                    out_of_order = False
+                    for i in range(slow, fast):
+                        if (
+                            execution_nodes[i].operation.type
+                            != _DAGNodeOperationType.READ
+                            or not execution_nodes[slow].requires_nccl
+                        ):
+                            out_of_order = True
+                            break
+                    out_of_order_quota -= int(out_of_order)
                 fast += 1
             while slow < len(execution_nodes) and (
                 not out_of_order_quota or fast >= len(execution_nodes)
