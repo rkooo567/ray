@@ -539,6 +539,68 @@ def _optimize_execution_schedule(
         out_of_order_limit: The maximum number of out-of-order `receive` operations
             allowed.
     """
+    if out_of_order_limit == 0:
+        return actor_to_execution_schedule, actor_to_execution_nodes
+
+    actor_to_optimized_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGNodeOperation]
+    ] = defaultdict(list)
+    actor_to_optimized_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ] = defaultdict(list)
+
+    for actor, execution_nodes in actor_to_execution_nodes.items():
+        fast = 0
+        slow = 0
+        optimized_schedule = []
+        optimized_nodes = []
+        out_of_order_quota = out_of_order_limit + 1
+        while slow < len(execution_nodes):
+            while out_of_order_quota > 0 and fast < len(execution_nodes):
+                if (
+                    execution_nodes[fast].operation.type == _DAGNodeOperationType.READ
+                    and execution_nodes[fast].requires_nccl
+                ):
+                    optimized_nodes.append(execution_nodes[fast])
+                    optimized_schedule.append(execution_nodes[fast].operation)
+                    out_of_order_quota -= 1
+                fast += 1
+            while not out_of_order_quota or fast >= len(execution_nodes):
+                if (
+                    execution_nodes[slow].operation.type != _DAGNodeOperationType.READ
+                    or not execution_nodes[slow].requires_nccl
+                ):
+                    optimized_nodes.append(execution_nodes[slow])
+                    optimized_schedule.append(execution_nodes[slow].operation)
+                    if (
+                        execution_nodes[slow].operation.type
+                        == _DAGNodeOperationType.WRITE
+                        and execution_nodes[slow].requires_nccl
+                    ):
+                        out_of_order_quota += 1
+                slow += 1
+        actor_to_optimized_nodes[actor] = optimized_nodes
+        actor_to_optimized_schedule[actor] = optimized_schedule
+        print(f"Actor {actor._ray_actor_id} optimized schedule:", optimized_schedule)
+    return actor_to_optimized_schedule, actor_to_optimized_nodes
+
+
+def _optimize_execution_schedule_bak(
+    actor_to_execution_schedule: Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]],
+    actor_to_execution_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
+    out_of_order_limit: int = 1,
+):
+    """
+    Optimize the execution schedule by overlapping computation and communication.
+
+    Args:
+        actor_to_execution_schedule: A dictionary that maps an actor handle to
+            the execution schedule which is a list of operations to be executed.
+        out_of_order_limit: The maximum number of out-of-order `receive` operations
+            allowed.
+    """
     # TODO: analyze the DAG and turn off overlap optimization when it is
     # not supported (yet). For example, currently if a channel requires
     # both NCCL and shared memory transport, overlap optimization cannot
