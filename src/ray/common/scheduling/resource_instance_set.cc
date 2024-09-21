@@ -166,6 +166,7 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     int64_t idx_best_fit = -1;
     FixedPoint available_best_fit = 1.;
     for (size_t i = 0; i < available.size(); i++) {
+      RAY_LOG(ERROR) << "SANG-TODO " << resource_id.Binary() <<  " available[" << i << "]: " << available[i] <<" remaining_demand: " << remaining_demand;
       if (available[i] >= remaining_demand) {
         if (idx_best_fit == -1 ||
             (available[i] - remaining_demand < available_best_fit)) {
@@ -174,6 +175,7 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
         }
       }
     }
+    RAY_LOG(ERROR) << "SANG-TODO " << resource_id.Binary() << " best fit id is  " << idx_best_fit;
     if (idx_best_fit == -1) {
       return std::nullopt;
     } else {

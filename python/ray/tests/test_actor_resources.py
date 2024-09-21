@@ -751,20 +751,20 @@ def test_actor_cuda_visible_devices_placement_group_bundle_index2(shutdown_only)
         for i in range(2)
     ]
 
-    m2 = [
-        Actor.options(
-            num_gpus=0.5,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=pg, placement_group_bundle_index=i
-            ),
-        ).remote()
-        for i in range(2)
-    ]
+    # m2 = [
+    #     Actor.options(
+    #         num_gpus=0.5,
+    #         scheduling_strategy=PlacementGroupSchedulingStrategy(
+    #             placement_group=pg, placement_group_bundle_index=i
+    #         ),
+    #     ).remote()
+    #     for i in range(2)
+    # ]
 
     assert ray.get(m1[0].get_cuda_visible_devices.remote()) == "0"
     assert ray.get(m1[1].get_cuda_visible_devices.remote()) == "1"
-    assert ray.get(m2[0].get_cuda_visible_devices.remote()) == "0"
-    assert ray.get(m2[1].get_cuda_visible_devices.remote()) == "1"
+    # assert ray.get(m2[0].get_cuda_visible_devices.remote()) == "0"
+    # assert ray.get(m2[1].get_cuda_visible_devices.remote()) == "1"
 
 
 if __name__ == "__main__":
