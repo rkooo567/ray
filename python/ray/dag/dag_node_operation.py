@@ -530,6 +530,49 @@ def _optimize_execution_schedule(
     ],
     out_of_order_limit: int = 1,
 ):
+    """ """
+    if out_of_order_limit == 0:
+        return actor_to_execution_schedule, actor_to_execution_nodes
+
+    import copy
+
+    actor_to_optimized_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGNodeOperation]
+    ] = copy.deepcopy(actor_to_execution_schedule)
+    actor_to_optimized_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ] = copy.deepcopy(actor_to_execution_nodes)
+    for actor, optimized_nodes in actor_to_optimized_nodes.items():
+        optimized_schedule = actor_to_optimized_schedule[actor]
+        for i in range(len(optimized_nodes)):
+            if (
+                optimized_nodes[i].operation.type == _DAGNodeOperationType.READ
+                and optimized_nodes[i].requires_nccl
+            ):
+                for j in range(i - 1, 0, -1):
+                    if (
+                        optimized_nodes[j].operation.type
+                        == _DAGNodeOperationType.COMPUTE
+                    ):
+                        optimized_nodes[i], optimized_nodes[j] = (
+                            optimized_nodes[j],
+                            optimized_nodes[i],
+                        )
+                        optimized_schedule[i], optimized_schedule[j] = (
+                            optimized_schedule[j],
+                            optimized_schedule[i],
+                        )
+                        break
+        return actor_to_optimized_schedule, actor_to_optimized_nodes
+
+
+def _optimize_execution_schedule_rate_limit(
+    actor_to_execution_schedule: Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]],
+    actor_to_execution_nodes: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
+    out_of_order_limit: int = 1,
+):
     """
     Optimize the execution schedule by overlapping computation and communication.
 
