@@ -563,6 +563,11 @@ def _optimize_execution_schedule(
                             optimized_schedule[i],
                         )
                         break
+                    if (
+                        optimized_nodes[j].operation.type == _DAGNodeOperationType.READ
+                    ) and (optimized_nodes[j].requires_nccl):
+                        # Keep relative order of nccl reads
+                        break
     return actor_to_optimized_schedule, actor_to_optimized_nodes
 
 
