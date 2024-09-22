@@ -549,7 +549,7 @@ def _optimize_execution_schedule(
                 optimized_nodes[i].operation.type == _DAGNodeOperationType.READ
                 and optimized_nodes[i].requires_nccl
             ):
-                for j in range(i - 1, 0, -1):
+                for j in range(i - 1, -1, -1):
                     if (
                         optimized_nodes[j].operation.type
                         == _DAGNodeOperationType.COMPUTE
@@ -563,7 +563,7 @@ def _optimize_execution_schedule(
                             optimized_schedule[i],
                         )
                         break
-        return actor_to_optimized_schedule, actor_to_optimized_nodes
+    return actor_to_optimized_schedule, actor_to_optimized_nodes
 
 
 def _optimize_execution_schedule_rate_limit(
