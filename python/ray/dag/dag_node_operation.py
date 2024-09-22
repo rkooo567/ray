@@ -554,14 +554,14 @@ def _optimize_execution_schedule(
                         optimized_nodes[j].operation.type
                         == _DAGNodeOperationType.COMPUTE
                     ):
-                        optimized_nodes[i], optimized_nodes[j] = (
-                            optimized_nodes[j],
-                            optimized_nodes[i],
-                        )
-                        optimized_schedule[i], optimized_schedule[j] = (
-                            optimized_schedule[j],
-                            optimized_schedule[i],
-                        )
+                        nccl_read_node = optimized_nodes[i]
+                        nccl_read_op = optimized_schedule[i]
+                        sublist = optimized_nodes[j:i]
+                        sublist_op = optimized_schedule[j:i]
+                        optimized_nodes[j + 1 : i + 1] = sublist
+                        optimized_schedule[j + 1 : i + 1] = sublist_op
+                        optimized_nodes[j] = nccl_read_node
+                        optimized_schedule[j] = nccl_read_op
                         break
                     if (
                         optimized_nodes[j].operation.type == _DAGNodeOperationType.READ
