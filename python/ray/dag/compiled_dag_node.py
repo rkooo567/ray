@@ -192,14 +192,14 @@ def do_stream_tasks(
         schedule: A list of _DAGNodeOperation that should be executed in order.
     """
     try:
-        import cupy as cp
-        import torch
-        from ray.air._internal import torch_utils
+        # import cupy as cp
+        # import torch
+        # from ray.air._internal import torch_utils
 
-        device = torch_utils.get_devices()[0]
-        exec_stream = cp.cuda.ExternalStream(
-            torch.cuda.Stream().cuda_stream, device_id=device.index
-        )
+        # device = torch_utils.get_devices()[0]
+        # exec_stream = cp.cuda.ExternalStream(
+        #     torch.cuda.Stream().cuda_stream, device_id=device.index
+        # )
 
         for task in tasks:
             task.prepare()
@@ -210,7 +210,7 @@ def do_stream_tasks(
                 break
             for operation in schedule:
                 done = tasks[operation.exec_task_idx].stream_operation(
-                    self, operation, exec_stream
+                    self, operation, None
                 )
                 if done:
                     break
@@ -677,7 +677,9 @@ class ExecutableTask:
             if isinstance(entry, tuple):
                 channel_result, event = entry
                 if event:
-                    exec_stream.wait_event(event)
+                    # TODO: wait on the default stream
+                    event.synchronize()
+                    # exec_stream.wait_event(event)
             else:
                 channel_result = entry
             channel_results.append(channel_result)
@@ -689,12 +691,12 @@ class ExecutableTask:
         import cupy as cp
 
         exec_event = cp.cuda.Event()
-        with exec_stream:
-            try:
-                output_val = method(*resolved_inputs, **self.resolved_kwargs)
-            except Exception as exc:
-                output_val = _wrap_exception(exc)
-            exec_event.record()
+        # with exec_stream:
+        try:
+            output_val = method(*resolved_inputs, **self.resolved_kwargs)
+        except Exception as exc:
+            output_val = _wrap_exception(exc)
+        exec_event.record()
 
         self.set_stream_buffer(op, (output_val, exec_event))
         return False
