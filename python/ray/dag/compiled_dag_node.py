@@ -672,10 +672,20 @@ class ExecutableTask:
             self.set_stream_buffer(exc)
             return False
 
+        import cupy as cp
+
         channel_results = []
         for entry in input_data:
-            if isinstance(entry, tuple):
-                channel_result, event = entry
+            if (
+                isinstance(entry, tuple)
+                and len(entry) == 2
+                and isinstance(entry[1], cp.cuda.Event)
+            ):
+                try:
+                    channel_result, event = entry
+                except Exception as exc:
+                    print(f"Got exception: {exc}")
+                    print(f"{entry=}")
                 if event:
                     # TODO: wait on the default stream
                     event.synchronize()
