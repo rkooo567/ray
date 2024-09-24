@@ -73,6 +73,7 @@ class _NcclGroup(GPUCommunicator):
                 If this is True, then `cuda_stream` is not used and new streams
                 are created.
         """
+        print(f"{dedicated_streams=}")
         self._world_size = world_size
         self._rank: Optional[int] = rank
         self.nccl_util: Optional[ModuleType] = None

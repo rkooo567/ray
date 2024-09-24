@@ -208,7 +208,8 @@ def do_stream_tasks(
         while True:
             if done:
                 break
-            for operation in schedule:
+            for i, operation in enumerate(schedule):
+                logger.info(f"done: [{operation.exec_task_idx}] {operation.method_name} {operation.type} {i}")
                 done = tasks[operation.exec_task_idx].stream_operation(
                     self, operation, None
                 )
@@ -650,7 +651,7 @@ class ExecutableTask:
         computation on the provided execution stream. Then, cache the new
         intermediate result.
 
-        Args:
+        Args::
             op: The compute operation.
             exec_stream: The CUDA stream to execute the compute operation.
             class_handle: An instance of the class to which the actor belongs. For
@@ -688,8 +689,9 @@ class ExecutableTask:
                     print(f"{entry=}")
                 if event:
                     # TODO: wait on the default stream
-                    event.synchronize()
-                    # exec_stream.wait_event(event)
+                    stream = cp.cuda.get_current_stream()
+                    stream.wait_event(event)
+                    # event.synchronize()
             else:
                 channel_result = entry
             channel_results.append(channel_result)
@@ -722,7 +724,10 @@ class ExecutableTask:
         """
         output_val, exec_event = self.reset_stream_buffer(op)
         exit = False
-        exec_event.synchronize()
+        #FIXME
+        # exec_event.synchronize()
+
+        time.sleep(1)
         try:
             self.output_writer.write(output_val)
         except RayChannelError:
@@ -1227,7 +1232,7 @@ class CompiledDAG:
         if None in nccl_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if nccl_actors and self._nccl_group_id is None:
-            self._nccl_group_id = _init_nccl_group(nccl_actors, self._custom_nccl_group)
+            self._nccl_group_id = _init_nccl_group(nccl_actors, self._custom_nccl_group, self._overlap_gpu_communication)
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1615,8 +1620,10 @@ class CompiledDAG:
                 exec_task_func = do_profile_stream_tasks
             else:
                 exec_task_func = do_stream_tasks
+                print("do_stream_tasks")
         else:
             exec_task_func = do_exec_tasks
+            print("do_exec_tasks")
 
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():

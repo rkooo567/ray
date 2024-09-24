@@ -167,7 +167,7 @@ class DAGNode(DAGNodeBase):
         _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
         _max_inflight_executions: Optional[int] = None,
-        _overlap_gpu_communication: Optional[bool] = None,
+        _overlap_gpu_communication: Optional[bool] = True,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 

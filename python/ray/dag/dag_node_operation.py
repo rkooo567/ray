@@ -568,6 +568,7 @@ def _optimize_execution_schedule(
                     ) and (optimized_nodes[j].requires_nccl):
                         # Keep relative order of nccl reads
                         break
+        print(f"Actor {actor._ray_actor_id} optimized schedule:", optimized_schedule)
     return actor_to_optimized_schedule, actor_to_optimized_nodes
 
 

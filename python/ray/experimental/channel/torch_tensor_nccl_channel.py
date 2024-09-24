@@ -438,6 +438,7 @@ def _do_init_nccl_group(
     comm_id,
     rank,
     actor_handles,
+    dedicated_streams,
     custom_nccl_group: Optional[GPUCommunicator] = None,
 ):
     import torch
@@ -457,6 +458,7 @@ def _do_init_nccl_group(
             rank,
             actor_handles,
             torch.cuda.current_stream().cuda_stream,
+            dedicated_streams
         )
 
 
@@ -515,6 +517,7 @@ def _get_ranks(
 def _init_nccl_group(
     actors: List[ray.actor.ActorHandle],
     custom_nccl_group: Optional[GPUCommunicator] = None,
+    dedicated_streams: bool = False
 ) -> str:
     """
     Initialize a NCCL group with the given actors. If a custom NCCL group is
@@ -563,6 +566,7 @@ def _init_nccl_group(
             nccl_comm_id,
             rank,
             actors,
+            dedicated_streams,
             custom_nccl_group,
         )
         for rank, actor in zip(ranks, actors)

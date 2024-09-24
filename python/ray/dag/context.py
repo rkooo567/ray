@@ -8,8 +8,8 @@ from ray.util.annotations import DeveloperAPI
 _default_context: "Optional[DAGContext]" = None
 _context_lock = threading.Lock()
 
-DEFAULT_EXECUTION_TIMEOUT_S = int(os.environ.get("RAY_DAG_execution_timeout", 10))
-DEFAULT_RETRIEVAL_TIMEOUT_S = int(os.environ.get("RAY_DAG_retrieval_timeout", 10))
+DEFAULT_EXECUTION_TIMEOUT_S = int(os.environ.get("RAY_DAG_execution_timeout", 1000))
+DEFAULT_RETRIEVAL_TIMEOUT_S = int(os.environ.get("RAY_DAG_retrieval_timeout", 1000))
 # Default buffer size is 1MB.
 DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_DAG_buffer_size_bytes", 1e6))
 # Default asyncio_max_queue_size is 0, which means no limit.
