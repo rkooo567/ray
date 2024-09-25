@@ -26,7 +26,7 @@ DEFAULT_MAX_INFLIGHT_EXECUTIONS = int(
 )
 
 DEFAULT_OVERLAPPING_FACTOR = bool(
-    os.environ.get("RAY_DAG_overlap_gpu_communication", 0)
+    int(os.environ.get("RAY_DAG_overlap_gpu_communication", 0))
 )
 
 

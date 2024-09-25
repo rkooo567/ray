@@ -20,7 +20,7 @@ BATCH_SIZE = 4
 FEATURE_SIZE = 24576
 FORWARD_SHAPE = (BATCH_SIZE, FEATURE_SIZE)
 BACKWARD_SHAPE = (BATCH_SIZE, FEATURE_SIZE)
-
+ray.init(num_cpus=2)
 def cifar_trainset(dl_path="/tmp/cifar10-data"):
     transform = transforms.Compose(
         [
@@ -67,6 +67,7 @@ class Worker:
 
         self.fwd_batch_id = 0
         self.bwd_batch_id = 0
+        import cupy as cp
 
     def initialize_dataloader(self, micro_batch_size):
         trainset = cifar_trainset()
@@ -84,53 +85,67 @@ class Worker:
         self.cache_targets = targets.cuda()
 
     def fwd(self, fwd_inputs):
-        # self.trace.append(("FWD", self.pp_rank))
+        try:
+            # self.trace.append(("FWD", self.pp_rank))
 
-        input_activation = fwd_inputs
-        targets = self.cache_targets
-        batch_id = self.fwd_batch_id
-        self.fwd_batch_id += 1
+            # input_activation = fwd_inputs
+            # targets = self.cache_targets
+            # batch_id = self.fwd_batch_id
+            # self.fwd_batch_id += 1
 
-        if self.pp_rank > 0:
-            input_activation.requires_grad = True
-            input_activation.retain_grad()
+            # if self.pp_rank > 0:
+            #     input_activation.requires_grad = True
+            #     input_activation.retain_grad()
 
-        # Fetch input batches from dataloader
-        if self.pp_rank == 0:
-            input_activation = self.cache_input_activation
+            # # Fetch input batches from dataloader
+            # if self.pp_rank == 0:
+            #     input_activation = self.cache_input_activation
 
-        # Forward Pass
-        self.input_activations[batch_id] = input_activation
-        output_activation = self.module(input_activation)
-        
-        if self.pp_rank == self.pp_size - 1:
-            loss = self.loss(input_activation, targets)
-            self.output_activations[batch_id] = loss
-            return None
-        else:
-            self.output_activations[batch_id] = output_activation
-            return output_activation
+            # # Forward Pass
+            # self.input_activations[batch_id] = input_activation
+            # output_activation = self.module(input_activation)
+            
+            if self.pp_rank == self.pp_size - 1:
+                # loss = self.loss(input_activation, targets)
+                # self.output_activations[batch_id] = loss
+                # print("fwd running")
+                return None
+            else:
+                # self.output_activations[batch_id] = output_activation
+                # print("fwd running")
+                # return output_activation
+                return torch.zeros(FORWARD_SHAPE, dtype=torch.float32, device="cuda")
+        except Exception as e:
+            print("SANG-TODO failed ", e)
+            raise
 
     def bwd(self, bwd_inputs):
-        # self.trace.append(("BWD", self.pp_rank))
+        try:
+            # self.trace.append(("BWD", self.pp_rank))
+            # print("bwd start")
+            # gradients = bwd_inputs
+            # batch_id = self.bwd_batch_id
+            # self.bwd_batch_id += 1
 
-        gradients = bwd_inputs
-        batch_id = self.bwd_batch_id
-        self.bwd_batch_id += 1
+            # Backward Pass
+            # print(f"bwd start. getting grad {gradients=} {batch_id=}")
+            # self.output_activations[batch_id].backward(gradients)
+            # print("bwd finished. getting grad")
+            # bwd_gradients = self.input_activations[batch_id].grad
+            # print("getting grad finished")
 
-        # Backward Pass
-        self.output_activations[batch_id].backward(gradients)
-        bwd_gradients = self.input_activations[batch_id].grad
-
-        # Clear cache to free GRAM
-        self.input_activations.pop(batch_id)
-        self.output_activations.pop(batch_id)
-
-        # Return None to avoid Actor-Driver Comm
-        if self.pp_rank == 0:
-            return None
-        else:
-            return bwd_gradients
+            # Clear cache to free GRAM
+            # self.input_activations.pop(batch_id)
+            # self.output_activations.pop(batch_id)
+            # print("bwd running")
+            # Return None to avoid Actor-Driver Comm
+            if self.pp_rank == 0:
+                return None
+            else:
+                return torch.zeros(BACKWARD_SHAPE, dtype=torch.float32, device="cuda")
+        except Exception as e:
+            print("SANG-TODO failed ", e)
+            raise
 
     def pop_trace(self):
         trace = self.trace
@@ -202,6 +217,9 @@ def generate_1f1b_dag(
                         # b.with_type_hint(
                         #     TorchTensorType(transport=TorchTensorType.NCCL)
                         # )
+                        # b.with_type_hint(
+                        #     TorchTensorType(transport=TorchTensorType.NCCL, _shape=FORWARD_SHAPE, _dtype=torch.float32, _direct_return=True)
+                        # )
                         b.with_type_hint(
                             TorchTensorType(transport=TorchTensorType.NCCL, _shape=FORWARD_SHAPE, _dtype=torch.float32, _direct_return=True)
                         )
@@ -216,6 +234,9 @@ def generate_1f1b_dag(
                         # Use NCCL channel for communication between workers.
                         # b.with_type_hint(
                         #     TorchTensorType(transport=TorchTensorType.NCCL)
+                        # )
+                        # b.with_type_hint(
+                        #     TorchTensorType(transport=TorchTensorType.NCCL, _shape=BACKWARD_SHAPE, _dtype=torch.float32, _direct_return=True)
                         # )
                         b.with_type_hint(
                             TorchTensorType(transport=TorchTensorType.NCCL, _shape=BACKWARD_SHAPE, _dtype=torch.float32, _direct_return=True)

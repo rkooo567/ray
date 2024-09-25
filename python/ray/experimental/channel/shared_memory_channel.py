@@ -458,6 +458,9 @@ class Channel(ChannelInterface):
         if not isinstance(value, (int, float)):
             timeout = None
         self.ensure_registered_as_writer()
+        import cupy as cp
+        if isinstance(timeout, cp.cuda.Event):
+            timeout = -1
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
@@ -495,6 +498,9 @@ class Channel(ChannelInterface):
         )
 
     def read(self, timeout: Optional[float] = None) -> Any:
+        import cupy as cp
+        if isinstance(timeout, cp.cuda.Event):
+            timeout = -1
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."

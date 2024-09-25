@@ -1,3 +1,4 @@
+from pprint import pprint
 from functools import total_ordering
 from enum import Enum
 from typing import Optional, Tuple, List, Dict
@@ -444,7 +445,7 @@ def _visualize_graph_ordered(
                 dot.edge(node_repr, out_node_repr, label=label, color=color)
 
     # Render the graph to a file or display it
-    dot.render("dag_schedule", format="png", view=True)
+    # dot.render("dag_schedule", format="png", view=True)
 
 
 def _generate_actor_to_execution_schedule(
@@ -518,7 +519,9 @@ def _generate_actor_to_execution_schedule(
     for _, candidates in actor_to_candidates.items():
         assert len(candidates) == 0
     for actor_handle, execution_schedule in actor_to_execution_schedule.items():
-        print(f"Actor {actor_handle._ray_actor_id} schedule: {execution_schedule}")
+        # print(f"Actor {actor_handle._ray_actor_id} schedule: {execution_schedule}")
+        from pprint import pprint
+        pprint(execution_schedule)
     # _visualize_graph_ordered(actor_to_nodes, graph)
     return actor_to_execution_schedule, actor_to_execution_nodes
 
@@ -568,7 +571,7 @@ def _optimize_execution_schedule(
                     ) and (optimized_nodes[j].requires_nccl):
                         # Keep relative order of nccl reads
                         break
-        print(f"Actor {actor._ray_actor_id} optimized schedule:", optimized_schedule)
+        pprint(optimized_schedule)
     return actor_to_optimized_schedule, actor_to_optimized_nodes
 
 
@@ -641,7 +644,7 @@ def _optimize_execution_schedule_rate_limit(
                 slow += 1
         actor_to_optimized_nodes[actor] = optimized_nodes
         actor_to_optimized_schedule[actor] = optimized_schedule
-        print(f"Actor {actor._ray_actor_id} optimized schedule:", optimized_schedule)
+        pprint(optimized_schedule)
     return actor_to_optimized_schedule, actor_to_optimized_nodes
 
 
@@ -705,5 +708,5 @@ def _optimize_execution_schedule_bak(
                 optimized_schedule.append(picked.operation)
         actor_to_optimized_nodes[actor] = optimized_nodes
         actor_to_optimized_schedule[actor] = optimized_schedule
-        print(f"Actor {actor._ray_actor_id} optimized schedule:", optimized_schedule)
+        pprint(f"Actor {actor._ray_actor_id} optimized schedule:", optimized_schedule)
     return actor_to_optimized_schedule, actor_to_optimized_nodes

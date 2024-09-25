@@ -206,13 +206,15 @@ def do_stream_tasks(
 
         done = False
         while True:
+            print("SANG-TODO schedule fnished!")
             if done:
                 break
             for i, operation in enumerate(schedule):
-                logger.info(f"done: [{operation.exec_task_idx}] {operation.method_name} {operation.type} {i}")
+                print(f"done: [{operation.exec_task_idx}] {operation.method_name} {operation.type} {i} {done=}")
                 done = tasks[operation.exec_task_idx].stream_operation(
                     self, operation, None
                 )
+                print(f"op finished: [{operation.exec_task_idx}] {operation.method_name} {operation.type} {i} {done=}")
                 if done:
                     break
     except Exception:
@@ -689,9 +691,9 @@ class ExecutableTask:
                     print(f"{entry=}")
                 if event:
                     # TODO: wait on the default stream
+                    print(f"SANG-TODO wait stream {event=}")
                     stream = cp.cuda.get_current_stream()
                     stream.wait_event(event)
-                    # event.synchronize()
             else:
                 channel_result = entry
             channel_results.append(channel_result)
@@ -702,13 +704,13 @@ class ExecutableTask:
 
         import cupy as cp
 
-        exec_event = cp.cuda.Event()
         # with exec_stream:
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
         except Exception as exc:
             output_val = _wrap_exception(exc)
-        exec_event.record()
+        exec_event = cp.cuda.Event()
+        exec_event.record(cp.cuda.get_current_stream())
 
         self.set_stream_buffer(op, (output_val, exec_event))
         return False
@@ -727,6 +729,7 @@ class ExecutableTask:
         #FIXME
         # exec_event.synchronize()
         try:
+            # logger.info(f"SANG-TODO {exec_event=}")
             self.output_writer.write(output_val, exec_event)
         except RayChannelError:
             # Channel closed. Exit the loop.
@@ -1229,6 +1232,7 @@ class CompiledDAG:
         nccl_actors = list(nccl_actors)
         if None in nccl_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
+        print(f"SANG-TODO {self._overlap_gpu_communication=}")
         if nccl_actors and self._nccl_group_id is None:
             self._nccl_group_id = _init_nccl_group(nccl_actors, self._custom_nccl_group, self._overlap_gpu_communication)
 
@@ -1800,9 +1804,9 @@ class CompiledDAG:
             actor_to_execution_nodes,
             self._overlap_gpu_communication,
         )
-        _visualize_graph_ordered(
-            actor_to_execution_nodes, actor_to_optimized_nodes, graph
-        )
+        # _visualize_graph_ordered(
+        #     actor_to_execution_nodes, actor_to_optimized_nodes, graph
+        # )
         return actor_to_optimized_schedule
 
     def _detect_deadlock(self) -> bool:

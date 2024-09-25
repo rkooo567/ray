@@ -263,6 +263,7 @@ def test_torch_tensor_nccl(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == (i, shape, dtype)
+
     compiled_dag.teardown()
 
     # TODO(swang): Check that actors are still alive. Currently this fails due

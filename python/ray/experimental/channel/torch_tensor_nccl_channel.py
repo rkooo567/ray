@@ -152,7 +152,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             self.serialization_ctx.set_use_external_transport(False)
 
         # Send the extracted tensors through a GPU-specific channel.
-        self._gpu_data_channel.write(tensors_to_send)
+        self._gpu_data_channel.write(tensors_to_send, timeout=timeout)
         # Send the rest of the data, with placeholders for the extracted
         # tensors, through a CPU-specific channel.
         self._cpu_data_channel.write(serialized_cpu_data)
@@ -620,3 +620,89 @@ def _destroy_nccl_group(group_id: str) -> None:
         )
 
     del ctx.nccl_groups[group_id]
+
+
+"""
+[([0] read_input R),
+ ([0] read_input C),
+ ([0] read_input W),
+ ([1] fwd R),
+ ([1] fwd C),
+ ([1] fwd W), -> nccl
+ ([2] fwd R),
+ ([2] fwd C),
+ ([3] bwd R), -> nccl
+ ([2] fwd W), -> nccl
+ ([3] bwd C),
+ ([3] bwd W),
+ ([4] bwd R), -> nccl
+ ([4] bwd C),
+ ([4] bwd W)]
+ send recv send recv
+
+1f1b
+Worker A
+[([0] read_input R),
+ ([0] read_input C),
+ ([0] read_input W),
+ ([1] fwd R),
+ ([1] fwd C),
+ ([1] fwd W), -> nccl
+ ([2] fwd R),
+ ([3] bwd R), -> nccl
+ ([2] fwd C),
+ ([2] fwd W), -> nccl
+ ([4] bwd R), -> nccl
+ ([3] bwd C),
+ ([3] bwd W),
+ ([4] bwd C),
+ ([4] bwd W)]
+
+Case 1:
+    Worker A:
+        stream: recv send recv send
+        nccl: recv send recv send
+    Worker B:
+        stream: send recv send recv
+        nccl: send recv send recv
+
+Case 1:
+    Worker A:
+        stream: recv send recv send
+        nccl_a: recv recv
+        nccl_b: send send
+    Worker B:
+        stream: recv recv send send
+        nccl_a: send send
+        nccl_b: recv recv
+    Worker C:
+        
+
+recv recv send send
+
+Worker B
+[([0] fwd R), -> nccl
+ ([0] fwd C),
+ ([0] fwd W),
+ ([1] bwd R),
+ ([2] fwd R), -> nccl
+ ([1] bwd C),
+ ([1] bwd W), -> nccl
+ ([2] fwd C),
+ ([2] fwd W),
+ ([3] bwd R),
+ ([3] bwd C),
+ ([3] bwd W)] -> nccl
+
+ recv recv send send
+
+
+Worker A
+
+
+Worker B
+
+
+
+
+"""

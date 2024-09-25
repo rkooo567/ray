@@ -79,6 +79,10 @@ class _NcclGroup(GPUCommunicator):
         self.nccl_util: Optional[ModuleType] = None
         self._actor_handles = actor_handles
         self._dedicated_streams = dedicated_streams
+        self._send_cnt = 0
+        self._send_completed = 0
+        self._recv_cnt = 0
+        self._recv_completed = 0
 
         if rank is not None:
             assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
@@ -107,19 +111,25 @@ class _NcclGroup(GPUCommunicator):
 
             # TODO(swang): Allow default device to be overridden.
             device = torch_utils.get_devices()[0]
+            assert len(torch_utils.get_devices()) == 1
             self._cuda_stream = cp.cuda.ExternalStream(
                 cuda_stream, device_id=device.index
             )
 
-            if dedicated_streams:
-                import torch
+        if dedicated_streams:
+            import torch
 
-                self._send_stream = cp.cuda.ExternalStream(
-                    torch.cuda.Stream().cuda_stream, device_id=device.index
-                )
-                self._recv_stream = cp.cuda.ExternalStream(
-                    torch.cuda.Stream().cuda_stream, device_id=device.index
-                )
+            self._send_stream = cp.cuda.ExternalStream(
+                torch.cuda.Stream().cuda_stream, device_id=device.index
+            )
+            self._recv_stream = cp.cuda.ExternalStream(
+                torch.cuda.Stream().cuda_stream, device_id=device.index
+            )
+            import cupy as cp
+            event = cp.cuda.Event()
+            event.record(cp.cuda.get_current_stream())
+            self._send_stream.wait_event(event)
+            self._recv_stream.wait_event(event)
 
         self._closed = False
 
@@ -178,7 +188,10 @@ class _NcclGroup(GPUCommunicator):
             import cupy as cp
             if event is not None:
                 assert isinstance(event, cp.cuda.Event)
-            self._recv_stream.wait_event(event)
+            print(f"SANG-TODO send before sync {self._send_completed=} {self._send_cnt=}")
+            self._send_stream.synchronize()
+            print("SANG-TODO send after sync")
+            self._send_stream.wait_event(event)
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
         self._comm.send(
@@ -188,6 +201,10 @@ class _NcclGroup(GPUCommunicator):
             peer_rank,
             self._send_stream.ptr if self._dedicated_streams else self._cuda_stream.ptr,
         )
+        self._send_cnt += 1
+        def update(self):
+            self._send_completed += 1
+        self._recv_stream.launch_host_func(update, self)
 
     def recv(
         self,
@@ -214,6 +231,9 @@ class _NcclGroup(GPUCommunicator):
         import cupy as cp
 
         if self._dedicated_streams:
+            print(f"SANG-TODO recv before sync {self._recv_completed=} {self._recv_cnt=}")
+            self._recv_stream.synchronize()
+            print("SANG-TODO recv after sync")
             event = cp.cuda.Event()
             self._comm.recv(
                 self.nccl_util.get_tensor_ptr(buf),
@@ -222,6 +242,10 @@ class _NcclGroup(GPUCommunicator):
                 peer_rank,
                 self._recv_stream.ptr,
             )
+            self._recv_cnt += 0
+            def update(self):
+                self._recv_completed += 1
+            self._recv_stream.launch_host_func(update, self)
             event.record(self._recv_stream)
             if self._closed:
                 raise RayChannelError("NCCL group has been destroyed.")
