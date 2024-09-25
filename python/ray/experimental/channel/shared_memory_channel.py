@@ -455,6 +455,8 @@ class Channel(ChannelInterface):
             # )
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
+        if not isinstance(value, (int, float)):
+            timeout = None
         self.ensure_registered_as_writer()
         assert (
             timeout is None or timeout >= 0 or timeout == -1

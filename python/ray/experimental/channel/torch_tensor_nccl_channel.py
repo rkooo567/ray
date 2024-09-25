@@ -379,7 +379,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             # TODO: If there are multiple readers, can replace with a
             # broadcast.
             for rank in self._reader_ranks:
-                self._nccl_group.send(tensor, rank)
+                self._nccl_group.send(tensor, rank, timeout)
 
     def read(
         self, timeout: Optional[float] = None

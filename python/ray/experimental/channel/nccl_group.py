@@ -156,7 +156,7 @@ class _NcclGroup(GPUCommunicator):
         """
         return self._world_size
 
-    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+    def send(self, value: "torch.Tensor", peer_rank: int, event) -> None:
         """
         Send a torch.Tensor to a peer.
 
@@ -174,6 +174,11 @@ class _NcclGroup(GPUCommunicator):
         """
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
+        if self._dedicated_streams:
+            import cupy as cp
+            if event is not None:
+                assert isinstance(event, cp.cuda.Event)
+            self._recv_stream.wait_event(event)
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
         self._comm.send(

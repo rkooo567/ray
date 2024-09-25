@@ -726,10 +726,8 @@ class ExecutableTask:
         exit = False
         #FIXME
         # exec_event.synchronize()
-
-        time.sleep(1)
         try:
-            self.output_writer.write(output_val)
+            self.output_writer.write(output_val, exec_event)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True

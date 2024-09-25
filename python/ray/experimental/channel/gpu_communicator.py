@@ -66,7 +66,7 @@ class GPUCommunicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+    def send(self, value: "torch.Tensor", peer_rank: int, event) -> None:
         """
         Send a torch.Tensor to a peer.
 
